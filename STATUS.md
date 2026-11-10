@@ -15,8 +15,6 @@ Last update: 2026-11-10.
   `deny.toml`, `rustfmt.toml`, `clippy.toml`, `PLAN.md`, `STATUS.md`.
 - Lint policy: `unsafe_code = "forbid"`, `clippy::unwrap_used` and
   `clippy::expect_used` denied workspace-wide.
-- Git history started: `main` holds the bootstrap commit and `develop`
-  branches from it. Work happens on `feature/ci-bootstrap`.
 - GitHub Actions written: `ci.yml` (lint, test matrix across the three
   platforms plus an Intel Mac cross-build, MSRV, docs, gitflow branch check),
   `release.yml`, `docs.yml`; dependabot, PR template, four issue templates and
@@ -27,32 +25,34 @@ Last update: 2026-11-10.
   Gitflow branch pair check.
 - ADRs 0001–0008: packaging, docs i18n, template engine, HTTP client,
   scripting sandbox, storage format, Git backend, code editor.
-- Verified locally on Windows: `cargo fmt --all --check` clean,
-  `cargo clippy --workspace --all-targets -- -D warnings` clean,
-  `cargo test --workspace --locked` green (12 unit tests),
-  `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps` clean, all three mdBook
-  sites build, and the documentation structure check passes.
+- Quality gates verified locally on Windows and all passing:
+  `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D
+  warnings`, `cargo test --workspace --locked` (12 unit tests),
+  `cargo deny check` (`advisories ok, bans ok, licenses ok, sources ok`) and
+  `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps`.
+- The three mdBook sites build and the documentation structure check passes.
+- Remote published at https://github.com/jimmykedlyn/Heric (public) with
+  `main`, `develop` and `feature/ci-bootstrap` pushed.
+- Labels created: `crate:*` for all 12 crates and both apps, `milestone:M1` to
+  `milestone:M7`, `parity`, `docs`, `i18n` and `platform:windows|linux|macos`.
+- Pull request https://github.com/jimmykedlyn/heric/pull/6 open from
+  `feature/ci-bootstrap` to `develop`.
 
 ## In progress
 
 - Phase 0.3 inventory: 12 agents dispatched over the original repository.
   Reports land in `docs/inventory/`; consolidation into `FEATURES.md` comes
   next.
+- First CI run on PR #6, which must be green on Windows, Linux and macOS
+  before the merge.
 
 ## Blocked
 
-- **Network egress to github.com.** Connections to `github.com:443` time out
-  from this machine, so `git push`, `gh` API calls and the `cargo deny`
-  advisory database fetch all fail. `cargo-deny` cannot be validated locally
-  until the advisory database is reachable or is vendored.
-- **GitHub authentication.** Even once the network works, `gh auth status`
-  reports an invalid keyring token for `jimmykedlyn`; a
-  `gh auth refresh -h github.com` is required.
-- **Branch protection, labels, milestones, topics, default branch.** All need
-  the `gh` API. Until then the Gitflow rules are enforced by discipline, as
-  documented in `CONTRIBUTING.md`.
+- **Branch protection** for `main` and `develop` is applied only after the
+  first CI run publishes the exact job names to require.
 - **Release rehearsal** (`release/0.0.1` → PR to `main` → tag `v0.0.1-alpha`
-  → artifacts → back-merge) needs the remote and CI.
+  → artifacts → back-merge) waits for PR #6 to merge.
+- **`FEATURES.md` and the per-item issues** wait for the inventory reports.
 
 ## Decisions taken
 
@@ -69,12 +69,12 @@ Last update: 2026-11-10.
 
 ## Next
 
-1. Restore network and `gh` auth, then push `main` and `develop` and open the
-   `feature/ci-bootstrap` PR.
-2. Apply repository settings through `gh`: topics, labels, milestones M1–M7,
-   merge methods, delete-branch-on-merge and branch protection for `main` and
+1. Wait for CI green on the three platforms on PR #6, then squash merge into
    `develop`.
-3. Wait for CI green on the three platforms, then run the release rehearsal.
+2. Apply branch protection to `main` and `develop` with the published check
+   names, block force-push and deletion, and require pull requests.
+3. Run the release rehearsal through `release/0.0.1`, then remove the test
+   release and tag after confirmation.
 4. Consolidate the inventory into `docs/inventory/FEATURES.md` and open one
    issue per P0/P1 item.
 5. Report Phase 0 results in Portuguese and wait for approval before Phase 1.
