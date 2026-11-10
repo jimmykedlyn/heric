@@ -21,9 +21,9 @@ feature parity and keeping compatibility with users' existing data.
 | Step | Status | Notes |
 |---|---|---|
 | 0.1 Workspace skeleton and root files | done | Local scaffold, validated by the quality gates. Merged in PR #6. |
-| 0.1 GitHub repository and settings | in progress | Remote public at `jimmykedlyn/Heric`; labels, templates and Dependabot configured. Branch protection still needs approval. |
+| 0.1 GitHub repository and settings | done | Remote public at `jimmykedlyn/Heric`; labels, templates and Dependabot configured. Branch protection on `main` and `develop`: pull request required, the eight CI checks required and branches must be up to date, force-push and deletion blocked, rules enforced for admins. |
 | 0.2 CI workflows | done | Eight jobs green on Windows, Linux, both macOS targets, MSRV, lint, docs and gitflow, on `develop` and on every PR since #6. |
-| 0.2 Release cycle rehearsal (`release/0.0.1`) | blocked | Branch and PR ready; merging into `main` and tagging need approval. |
+| 0.2 Release cycle rehearsal (`release/0.0.1`) | done | PR #11 merged into `main` as a merge commit, tag `v0.0.1` pushed, `Release` workflow green on all four targets, GitHub Release published. The rehearsal tag and release were deleted afterwards, as the plan requires. Defect found and fixed by PR #362: the build jobs uploaded `dist/**` as well as the archives, so the release carried four loose files per target. |
 | 0.3 Inventory (12 subagents A-L) | done | Twelve reports in `docs/inventory/`, 4,033 lines, 304 citations verified. Merged in PR #8. |
 | 0.3 Parity matrix and per-item issues | done | `docs/inventory/FEATURES.md`: 422 rows (P0 183, P1 162, P2 77) across 11 areas, with platforms, status and issue number per row. Matrix merged in PR #12; all 345 P0/P1 rows have an issue (#13 to #359). |
 

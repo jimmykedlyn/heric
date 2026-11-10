@@ -52,19 +52,31 @@ Last update: 2026-11-10.
   recorded under Cross-cutting risks with the resolution taken.
 - All 345 P0/P1 rows have a GitHub issue, numbered `#13` to `#359`, labelled
   `parity` plus `crate:<name>` and assigned to the milestone of the row.
+- Branch protection on `main` and `develop`: pull request required, the eight
+  CI checks required with the head branch up to date, force-push and deletion
+  blocked, rules enforced for administrators.
+- Release cycle exercised end to end and the rehearsal cleaned up:
+  - PR `#11` (`release/0.0.1`) merged into `main` as a merge commit `3806865`,
+    carrying ten commits and the 0.0.1 version bump.
+  - Tag `v0.0.1` pushed on that commit; the `Release` workflow passed
+    `tag is on main`, built the four targets and published a GitHub Release
+    with changelog notes.
+  - The rehearsal GitHub Release and the `v0.0.1` tag were deleted afterwards,
+    so the repository carries no release and no tag until the first real one.
+  - Back-merge `main` into `develop` landed as PR `#361`.
+  - Defects found by running it: the `github-pages` environment only allowed
+    `develop` to deploy, so the `main` deploy failed and `main` was allowed as
+    a deployment branch; and the build jobs published `dist/**` alongside the
+    archives, so each target left four loose files in the release. Both fixed,
+    the second by PR `#362`.
 
 ## In progress
 
-- Nothing. Phase 0 is complete apart from the two approval-gated items below.
+- Nothing. Phase 0 is complete; Phase 1 starts after the owner's review.
 
 ## Blocked
 
-- **Branch protection** for `main` and `develop` needs approval before the
-  rules are written.
-- **Release rehearsal**: `release/0.0.1` → PR `#11` into `main` is open, green
-  on the eight checks and mergeable. Merging it and pushing the tag needs
-  approval.
-- **Deleting the rehearsal release and tag** needs approval after the run.
+- Nothing.
 
 ## Decisions taken
 
@@ -86,9 +98,7 @@ Last update: 2026-11-10.
 
 ## Next
 
-1. Apply branch protection to `main` and `develop` with the eight published
-   check names, block force-push and deletion, require pull requests (after
-   approval).
-2. Merge PR `#11`, tag the rehearsal release, check the artifacts, then remove
-   the test release and tag after confirmation.
-3. Report Phase 0 results in Portuguese and wait for approval before Phase 1.
+1. Phase 1 begins with brainstorming in Portuguese and the ADRs plus public
+   traits, on `feature/architecture`.
+2. The first real release is `v0.1.0` at the end of M1; until then the
+   repository stays untagged.
