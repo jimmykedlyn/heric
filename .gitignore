@@ -1,0 +1,14 @@
+# Rust build artifacts
+/target
+/dist
+**/*.rs.bk
+
+# Editors and OS files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Local test output
+/docs/book/*/book

@@ -1,0 +1,17 @@
+[book]
+title = "Heric"
+authors = ["Heric and contributors"]
+language = "en"
+src = "src"
+description = "Documentation for the Heric API client"
+
+[build]
+build-dir = "book"
+create-missing = false
+
+[output.html]
+site-url = "/Heric/en/"
+git-repository-url = "https://github.com/jimmykedlyn/Heric"
+git-repository-icon = "fab fa-github"
+default-theme = "light"
+preferred-dark-theme = "navy"

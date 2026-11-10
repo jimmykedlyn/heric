@@ -1,0 +1,21 @@
+[package]
+name = "heric-cli"
+description = "Command line interface for Heric"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "heric-cli"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+clap = { workspace = true }
+heric-core = { workspace = true }

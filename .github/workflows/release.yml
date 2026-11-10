@@ -1,0 +1,133 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  verify-tag:
+    name: tag is on main
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fail unless the tagged commit is in main
+        run: |
+          git fetch origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::Tag $GITHUB_REF_NAME points to a commit outside main"
+            exit 1
+          fi
+
+  build:
+    name: build (${{ matrix.target }})
+    needs: verify-tag
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            platform: linux
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            platform: windows
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            platform: macos
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            platform: macos-intel
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux desktop dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libxkbcommon-dev libgtk-3-dev \
+            libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
+            libssl-dev protobuf-compiler
+
+      - name: Install protoc
+        if: runner.os != 'Linux'
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-${{ matrix.target }}
+
+      - name: Build release binaries
+        run: cargo build --release --workspace --locked --target ${{ matrix.target }}
+
+      - name: Package CLI archive
+        shell: bash
+        run: |
+          mkdir -p dist
+          ext=""
+          if [ "${{ runner.os }}" = "Windows" ]; then ext=".exe"; fi
+          cp "target/${{ matrix.target }}/release/heric-cli${ext}" dist/
+          cp LICENSE NOTICE README.md dist/
+          tar -czf "heric-cli-${GITHUB_REF_NAME}-${{ matrix.target }}.tar.gz" -C dist .
+          sha256sum "heric-cli-${GITHUB_REF_NAME}-${{ matrix.target }}.tar.gz" > "heric-cli-${GITHUB_REF_NAME}-${{ matrix.target }}.tar.gz.sha256"
+
+      - name: Build installers
+        if: matrix.platform != 'macos-intel'
+        shell: bash
+        run: |
+          # cargo-packager produces .msi/.dmg/.deb/.AppImage from Packager.toml.
+          # The macOS runner builds the app twice and merges with lipo first.
+          echo "cargo-packager configuration lands with the M1 release; see docs/adr/0001-packaging.md."
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifacts-${{ matrix.target }}
+          path: |
+            he*.tar.gz
+            he*.tar.gz.sha256
+            dist/**
+
+  publish:
+    name: publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: taiki-e/install-action@git-cliff
+
+      - name: Generate changelog for this version
+        run: git-cliff --latest --strip all > RELEASE_NOTES.md || echo "See CHANGELOG.md" > RELEASE_NOTES.md
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: RELEASE_NOTES.md
+          files: artifacts/**
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}

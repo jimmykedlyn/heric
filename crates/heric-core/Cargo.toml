@@ -1,0 +1,20 @@
+[package]
+name = "heric-core"
+description = "Application services and event orchestration for Heric"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+heric-auth = { workspace = true }
+heric-http = { workspace = true }
+heric-model = { workspace = true }
+heric-storage = { workspace = true }
+heric-template = { workspace = true }
+thiserror = { workspace = true }

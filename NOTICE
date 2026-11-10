@@ -1,0 +1,13 @@
+Heric
+Copyright (c) 2026 Heric and contributors
+
+This product includes software derived from Insomnia, Copyright (c) Kong Inc.,
+licensed under the Apache License, Version 2.0. A copy of that license is
+included in this repository at licenses/APACHE-2.0-insomnia.txt.
+
+Heric is an independent open source project. It is not affiliated with,
+endorsed by, or sponsored by Kong Inc. "Insomnia" is a trademark of its
+respective owner and is used here only to describe compatibility.
+
+The MIT license in LICENSE applies to the original code of this project. The
+Apache License, Version 2.0 applies to the portions derived from Insomnia.

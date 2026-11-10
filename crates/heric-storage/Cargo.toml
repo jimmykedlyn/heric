@@ -1,0 +1,17 @@
+[package]
+name = "heric-storage"
+description = "Persistence for Heric plus migration of Insomnia NeDB data"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+heric-model = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }

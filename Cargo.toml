@@ -1,0 +1,81 @@
+[workspace]
+resolver = "2"
+members = [
+    "apps/cli",
+    "apps/gui",
+    "crates/heric-auth",
+    "crates/heric-codegen",
+    "crates/heric-core",
+    "crates/heric-git",
+    "crates/heric-http",
+    "crates/heric-import",
+    "crates/heric-model",
+    "crates/heric-openapi",
+    "crates/heric-protocols",
+    "crates/heric-script",
+    "crates/heric-storage",
+    "crates/heric-template",
+]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.95"
+license = "MIT"
+authors = ["Heric and contributors"]
+repository = "https://github.com/jimmykedlyn/Heric"
+homepage = "https://heric.github.io/Heric/"
+description = "Native API client in Rust and egui, compatible with Insomnia"
+
+[workspace.dependencies]
+# Workspace crates
+heric-auth = { path = "crates/heric-auth" }
+heric-codegen = { path = "crates/heric-codegen" }
+heric-core = { path = "crates/heric-core" }
+heric-git = { path = "crates/heric-git" }
+heric-http = { path = "crates/heric-http" }
+heric-import = { path = "crates/heric-import" }
+heric-model = { path = "crates/heric-model" }
+heric-openapi = { path = "crates/heric-openapi" }
+heric-protocols = { path = "crates/heric-protocols" }
+heric-script = { path = "crates/heric-script" }
+heric-storage = { path = "crates/heric-storage" }
+heric-template = { path = "crates/heric-template" }
+
+# External crates. Entries without a consumer yet are candidate dependencies
+# for the Phase 1 architecture; the final stack is decided by the ADRs in
+# docs/adr/. A crate only starts depending on one when its task begins.
+anyhow = "1.0.104"
+chrono = { version = "0.4.45", features = ["serde"] }
+clap = { version = "4.6.7", features = ["derive"] }
+directories = "6.0.0"
+eframe = "0.37.0"
+egui = "0.37.0"
+egui_dock = "0.21.1"
+egui_extras = "0.37.0"
+egui_kittest = "0.37.0"
+gix = "0.90.0"
+keyring = "4.2.0"
+prost = "0.14.4"
+prost-reflect = "0.16.5"
+reqwest = { version = "0.13.5", default-features = false, features = ["json", "rustls-tls"] }
+rquickjs = "0.14.0"
+rustls-platform-verifier = "0.7.1"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+thiserror = "2.0.21"
+tokio = { version = "1.54.1", features = ["macros", "rt-multi-thread", "sync"] }
+tokio-tungstenite = "0.30.0"
+tonic = "0.14.9"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+uuid = { version = "1.29.2", features = ["serde", "v4"] }
+wiremock = "0.6.5"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+expect_used = "deny"
+unwrap_used = "deny"

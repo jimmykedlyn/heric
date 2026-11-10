@@ -1,0 +1,86 @@
+name: Docs
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: mdbook
+
+      - name: Build the three books
+        run: |
+          for lang in en pt-BR es; do
+            mdbook build docs/book/$lang --dest-dir "$GITHUB_WORKSPACE/site/$lang"
+          done
+
+      - name: Assemble site
+        run: |
+          if [ "${{ github.ref_name }}" = "develop" ]; then
+            base="/next"
+            mkdir -p site/next
+            mv site/en site/next/en
+            mv site/pt-BR site/next/pt-BR
+            mv site/es site/next/es
+          else
+            base=""
+          fi
+
+          cat > site/index.html <<HTML
+          <!doctype html>
+          <html lang="en">
+          <head>
+            <meta charset="utf-8">
+            <title>Heric documentation</title>
+            <script>
+              const base = "${base}";
+              const lang = (navigator.language || "en").toLowerCase();
+              let target = "en";
+              if (lang.startsWith("pt")) target = "pt-BR";
+              else if (lang.startsWith("es")) target = "es";
+              location.replace(base + "/" + target + "/");
+            </script>
+          </head>
+          <body>
+            <p>Redirecting. Choose a language:
+              <a href="en/">English</a> |
+              <a href="pt-BR/">Português</a> |
+              <a href="es/">Español</a>
+            </p>
+          </body>
+          </html>
+          HTML
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
