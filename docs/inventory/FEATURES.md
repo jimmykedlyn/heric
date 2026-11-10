@@ -1,0 +1,582 @@
+# Feature parity matrix
+
+This document is the single consolidated feature inventory for Heric, built from the twelve inventory reports in this directory: `structure.md`, `models.md`, `storage.md`, `http.md`, `templating.md`, `scripting.md`, `protocols.md`, `ui.md`, `platforms.md`, `io-and-cli.md`, `fixtures.md` and `docs-structure.md`. Those reports are the source of truth: every row below traces to a feature line in one of them, priorities are copied from the reports rather than re-derived (when two reports disagree the higher priority is adopted and the conflict is listed under Cross-cutting risks), and the Milestone column places the row in the M1-M7 plan defined in `D:\Projects\Heric\PROMPT-HERIC.md`. Citations are reproduced as the reports wrote them; `models.md` and `storage.md` paths are relative to the roots stated in those reports (`packages/insomnia-data/src`), and the `http.md` aliases `LP`, `NET` and `CURL` mean `packages/insomnia/src/main/network/libcurl-promise.ts`, `packages/insomnia/src/network/network.ts` and `packages/insomnia/src/main/network/curl.ts`, as defined in that report.
+
+## Priorities
+
+- **P0 - blocks a usable replacement.** Without it a user cannot open their existing Insomnia data or send their requests: database and model storage, the HTTP engine, the send pipeline, enough of the GUI to edit a request and inspect a response, and the data formats needed to read and write real installations.
+- **P1 - needed for real parity.** Features users depend on in daily work once the tool is usable: authentication, cookies, certificates, proxy, environments, the full template tag set, protocols, scripts, importers, Git sync, design mode, CLI, and the UI workflows around them.
+- **P2 - polish or defensive.** Nice-to-have, niche, administrative or hardening work: secondary editor affordances, legacy importers, cloud-adjacent models, packaging extras.
+- **Out of scope.** Cloud sync, Kong account login (including Konnect organization features) and telemetry; the full list with per-item justifications is in the Out of scope section.
+
+Milestones used in the Milestone column (from `PROMPT-HERIC.md`, rendered in English): **M1** first request - model + storage + basic templating + HTTP + minimal GUI (request sidebar, URL/method/headers/body editor, response and timeline view), real GET/POST end to end; **M2** data compatibility - open real Insomnia NeDB data at each OS path and import/export the Insomnia format identically, with a tested round-trip; **M3** all auth types, cookies, certificates, proxy (including system proxy), environments and sub-environments, complete template tags; **M4** GraphQL, gRPC, WebSocket and SSE; **M5** scripting (pre-request/after-response, tests) and the Postman/HAR/cURL/OpenAPI importers; **M6** codegen, Git sync, Design/OpenAPI mode and the complete CLI; **M7** UI polish (themes, shortcuts, settings), performance, icons, final installers on three platforms and complete documentation in three languages.
+
+## Summary
+
+| Area | P0 | P1 | P2 | Owning crate(s) | Report |
+|---|---:|---:|---:|---|---|
+| Structure and process | 1 | 2 | 1 | heric-core | `structure.md` |
+| Models | 22 | 22 | 19 | heric-model | `models.md` |
+| Storage | 11 | 9 | 2 | heric-storage | `storage.md` |
+| HTTP and auth | 35 | 16 | 7 | heric-http, heric-auth | `http.md` |
+| Templating | 17 | 13 | 10 | heric-template | `templating.md` |
+| Scripting | 11 | 14 | 5 | heric-script | `scripting.md` |
+| Protocols | 28 | 34 | 7 | heric-protocols | `protocols.md` |
+| UI | 10 | 11 | 8 | apps/gui | `ui.md` |
+| Platforms | 12 | 17 | 9 | heric-core, apps/gui, apps/cli | `platforms.md` |
+| Import, export, design, Git and CLI | 22 | 15 | 5 | heric-import, heric-openapi, heric-codegen, heric-git, apps/cli | `io-and-cli.md` |
+| Fixtures and golden tests | 14 | 9 | 4 | cross-crate (heric-import, -template, -http, -auth, -protocols, -model, -storage, -git, -codegen, apps/cli) | `fixtures.md` |
+| **Total** | **183** | **162** | **77** | - | 422 rows |
+
+`docs-structure.md` is deliberately absent: it inventories upstream Insomnia documentation topics, not product features; its findings feed the mdBook outline, not this matrix. Counts are per area row, not per source report: capabilities repeated across reports are merged into the row of the area that owns the implementation, so a report can contribute to an area other than its own row above.
+
+## Features
+
+Each area below owns the implementation of its rows; capabilities repeated across reports are merged into the row of the area that implements them, and every merged row cites each report it came from. Within an area, rows keep the order of the source report they were read from (so the table reads alongside that report) and the Priority column carries the classification; IDs are stable and are referenced by name from other sections.
+
+### Structure and process
+
+| ID | Feature | Priority | Milestone | Crate | Source |
+|---|---|---|---|---|---|
+| STR-001 | Runtime-agnostic data contracts (database and service traits, change buffering, one wiring per binary) so GUI, CLI and tests share the same API | P0 | M1 | heric-core | `structure.md` § Process, storage and data model (Runtime-agnostic data contracts wired once); `storage.md` § Feature list (Pluggable database backend); `models.md` § Core model + persistence (IDatabase) |
+| STR-002 | End-to-end test harness with smoke, critical and migration suites against dev, built and packaged binaries | P1 | M1 | apps/gui | `structure.md` § Testing infrastructure (Playwright smoke suite; Second E2E harness) |
+| STR-003 | Protocol mock servers for tests: REST, GraphQL, gRPC with reflection, WebSocket, Socket.IO, OAuth/OIDC, mTLS and a Git HTTP backend | P1 | M4 | heric-core | `structure.md` § Testing infrastructure (Mock servers for tests) |
+| STR-004 | Generated v5 JSON schema and editor autocomplete snippets with a CI freshness gate | P2 | M7 | heric-core | `structure.md` § Testing infrastructure (Schema freshness gates) |
+
+### Models
+
+| ID | Feature | Priority | Milestone | Crate | Source |
+|---|---|---|---|---|---|
+| MOD-001 | Base model fields (`_id`, `type`, `parentId`, `modified`, `created`, `isPrivate`, `name`) and the 44-type enum | P0 | M1 | heric-model | `models.md` § Core model + persistence (`models/base-types.ts:3-63`); `structure.md` § Process, storage and data model (Model registry and hierarchy) |
+| MOD-002 | `initModel`: merge global defaults and model `init()`, generate prefixed uuid ids, run the type migration, prune keys outside defaults and `optionalKeys` | P0 | M1 | heric-model | `models.md` § Core model + persistence (`node-src/database/init-model/index.ts:11-81`); `storage.md` § Feature list (Read-time document migrations) |
+| MOD-003 | Model registry dispatch (`all`, `getModel`, `mustGetModel`, `canDuplicate`, `rewriteReferences`) | P0 | M1 | heric-model | `models.md` § Core model + persistence (`models/index.ts:47-72`); `structure.md` § Process, storage and data model (Model registry and hierarchy) |
+| MOD-004 | `canSync(doc)` = `!isPrivate && model.canSync` for Git and export filtering | P1 | M2 | heric-model | `models.md` § Core model + persistence (`models/index.ts:33-45`) |
+| MOD-005 | Workspace scopes `collection\|design\|mock-server\|environment\|mcp` with scope guards and activity mapping | P0 | M1 | heric-model | `models.md` § Workspace / project (`models/workspace.ts:16-85`) |
+| MOD-006 | Scratchpad workspace, project and organization sentinels (`wrk_scratchpad`, `proj_scratchpad`, `org_scratchpad`) | P0 | M1 | heric-model | `models.md` § Workspace / project (`workspace.ts:12`, `project.ts:12`, `organization.ts:3`); `storage.md` § Feature list (Deterministic and special ids) |
+| MOD-007 | Workspace parent must be a project, enforced on create, update and upsert | P0 | M1 | heric-model | `models.md` § Workspace / project (`node-src/services/workspace.ts:16-56`) |
+| MOD-008 | Workspace migration: extract legacy certificates, repair name, map legacy scope | P0 | M2 | heric-model | `models.md` § Workspace / project (`init-model/workspace.ts:9-83`) |
+| MOD-009 | WorkspaceMeta (active tab/request/environment/unit suite, git flags) created lazily, with reference rewriting on duplicate | P1 | M1 | heric-model | `models.md` § Workspace / project (`models/workspace-meta.ts:9-54`; `node-src/services/workspace-meta.ts:33-36`) |
+| MOD-010 | Project variants Local/Remote/Git discriminated on `remoteId`/`gitRepositoryId`, with connected-git guards | P1 | M1 | heric-model | `models.md` § Workspace / project (`models/project.ts:72-115`) |
+| MOD-011 | Git repository id protection with `gr_` encoding, decoding and a queryable-id set | P1 | M6 | heric-model | `models.md` § Workspace / project (`project.ts:17-70`) |
+| MOD-012 | Project ordering (default organization first, then name) and storage-type resolution with a human-readable label | P1 | M1 | heric-model | `models.md` § Workspace / project (`project.ts:142-215`) |
+| MOD-013 | Clear workspace sync flags when a project leaves cloud sync while preserving `modified` | P2 | M2 | heric-model | `models.md` § Workspace / project (`node-src/services/project.ts:37-70`) |
+| MOD-014 | ProjectLintRuleset upsert per project | P2 | M6 | heric-model | `models.md` § Workspace / project (`models/project-lint-ruleset.ts:13-26`; `node-src/services/project-lint-ruleset.ts:6-24`) |
+| MOD-015 | Request model with body, params, headers, path parameters, scripts and six request settings | P0 | M1 | heric-model | `models.md` § HTTP request / response (`models/request.ts:352-393`) |
+| MOD-016 | Thirteen auth variants as a discriminated union with an empty-object fallback | P0 | M2 | heric-model | `models.md` § HTTP request / response (`request.ts:45-246`) |
+| MOD-017 | Request `init()` defaults (GET, empty body/auth/headers, sort key `-Date.now()`, `isPrivate:false`) | P0 | M1 | heric-model | `models.md` § HTTP request / response (`request.ts:430-453`) |
+| MOD-018 | Request migration: body string to object, bad URL reset, auth type inference | P0 | M2 | heric-model | `models.md` § HTTP request / response (`init-model/request.ts:8-87`) |
+| MOD-019 | Request reference rewriting in URL, body, params, headers, auth and scripts on duplicate | P0 | M2 | heric-model | `models.md` § HTTP request / response (`request.ts:455-474`) |
+| MOD-020 | RequestMeta: preview mode, response filter and history, active response, saved body, pinned, download path, stream summary | P0 | M1 | heric-model | `models.md` § HTTP request / response (`models/request-meta.ts:13-49`) |
+| MOD-021 | Response model with status, sizes, timings, headers, body/timeline paths, compression, error, cookie settings and test results | P0 | M1 | heric-model | `models.md` § HTTP request / response (`models/response.ts:23-88`) |
+| MOD-022 | Response creation: snapshot request version, prune to `maxResponses` (default 20), optional environment filtering | P0 | M1 | heric-model | `models.md` § HTTP request / response (`node-src/services/response.ts:45-79`) |
+| MOD-023 | Latest-response lookup filtered by environment and sorted by `modified: -1` | P1 | M1 | heric-model | `models.md` § HTTP request / response (`response.ts:27-43`) |
+| MOD-024 | Response body read with gunzip and a file-ownership check before overwrite | P1 | M1 | heric-model | `models.md` § HTTP request / response (`helpers/response-operations.ts:138-203`, `response.ts:14-17`) |
+| MOD-025 | Delete response history including on-disk body, timeline and event-log files | P1 | M1 | heric-model | `models.md` § HTTP request / response (`helpers/response-operations.ts:20-80`) |
+| MOD-026 | RequestVersion snapshots with change detection, compression and restore that preserves identity fields | P1 | M1 | heric-model | `models.md` § HTTP request / response (`node-src/services/request-version.ts:22-145`) |
+| MOD-027 | Path-parameter extraction, URL encoding and merge of saved and unsaved parameters | P1 | M1 | heric-model | `models.md` § HTTP request / response (`models/request.ts:290-350`) |
+| MOD-028 | GraphQL operation-type and subscription detection from the request body AST | P1 | M4 | heric-model | `models.md` § HTTP request / response (`request.ts:402-422`); `protocols.md` § GraphQL (How it works) |
+| MOD-029 | Event-stream detection through the first `Accept: text/event-stream` header | P2 | M4 | heric-model | `models.md` § HTTP request / response (`request.ts:399-400`); `protocols.md` § Server-Sent Events (row 44) |
+| MOD-030 | RequestGroup (folder) with its own environment/data, auth, headers, scripts and nesting | P0 | M1 | heric-model | `models.md` § Requests organization (`models/request-group.ts:24-57`) |
+| MOD-031 | Middle-point `metaSortKey` insertion on duplicate and `" (Copy)"` naming for requests, groups, environments and protocol requests | P0 | M1 | heric-model | `models.md` § Requests organization (`node-src/services/request.ts:39-58`, `request-group.ts:39-56`, `environment.ts:115-131`, `grpc-request.ts:44-62`, `websocket-request.ts:28-46`, `socket-io-request.ts:32-50`) |
+| MOD-032 | RequestGroupMeta `collapsed` state per folder | P1 | M1 | heric-model | `models.md` § Requests organization (`models/request-group-meta.ts:13-25`) |
+| MOD-033 | Group reference rewriting including `environment` and `kvPairData`, clearing `konnectRouteId` | P1 | M2 | heric-model | `models.md` § Requests organization (`request-group.ts:59-69`) |
+| MOD-034 | Folder naming metadata in command search and model introspection | P2 | M7 | heric-model | `models.md` § Requests organization (`request-group.ts:8`) |
+| MOD-035 | Environment with both JSON `data` and KV `kvPairData`, plus the `environmentType` discriminator | P0 | M1 | heric-model | `models.md` § Environment (`models/environment.ts:19-53`) |
+| MOD-036 | Nested sub-environments (an environment whose parent is another environment) | P0 | M3 | heric-model | `models.md` § Environment (`models/index.ts:126`) |
+| MOD-037 | Deterministic single base environment per parent, KV default and name `Base Environment` | P0 | M1 | heric-model | `models.md` § Environment (`node-src/services/environment.ts:76-105`); `storage.md` § Feature list (Deterministic and special ids) |
+| MOD-038 | KV pair types `json\|str\|secret` with `enabled` and `isConfidential` flags | P1 | M3 | heric-model | `models.md` § Environment (`models/environment.ts:24-38`) |
+| MOD-039 | Vault path constants, secret masking value, and secret removal on vault-key reset | P1 | M3 | heric-model | `models.md` § Environment (`models/environment.ts:10-13`, `node-src/services/environment.ts:36-63`) |
+| MOD-040 | `UserUploadEnvironment` subset used by CSV/JSON iteration data | P2 | M5 | heric-model | `models.md` § Environment (`models/environment.ts:59`) |
+| MOD-041 | CookieJar with the full cookie attribute set (expires, domain, path, secure, httpOnly, hostOnly, creation, lastAccessed, extensions) | P0 | M3 | heric-model | `models.md` § Cookie jar (`models/cookie-jar.ts:16-61`) |
+| MOD-042 | Deterministic one-cookie-jar-per-parent creation | P0 | M3 | heric-model | `models.md` § Cookie jar (`node-src/services/cookie-jar.ts:16-28`) |
+| MOD-043 | Cookie `expires` normalization (`'Infinity'` and invalid dates to null, numeric coercion), id backfill and `source` defaulting to `manual` | P1 | M3 | heric-model | `models.md` § Cookie jar (`cookie-jar.ts:23-40`; `init-model/cookie-jar.ts:4-29`) |
+| MOD-044 | `manual` versus `response` cookie origin so templated cookies stay distinguishable from literal ones | P1 | M3 | heric-model | `models.md` § Cookie jar (`cookie-jar.ts:51-54`) |
+| MOD-045 | gRPC request model (proto file, method, metadata, JSON body, reflection config) with reference rewriting and request meta | P1 | M4 | heric-model | `models.md` § gRPC / WebSocket / Socket.IO / MCP (`models/grpc-request.ts:12-87`; `grpc-request.ts:59-66`; `grpc-request-meta.ts:13-27`) |
+| MOD-046 | WebSocket request, payload and response models with cookie/encode/redirect/proxy settings | P1 | M4 | heric-model | `models.md` § gRPC / WebSocket / Socket.IO / MCP (`models/websocket-request.ts:17-64`; `websocket-payload.ts:14-34`; `websocket-response.ts:14-54`; `websocket-request-meta.ts:13-26`) |
+| MOD-047 | Socket.IO request, payload and response models including `eventListeners` and `settingPath` | P1 | M4 | heric-model | `models.md` § gRPC / WebSocket / Socket.IO / MCP (`models/socket-io-request.ts:17-72`; `socket-io-payload.ts:17-45`; `socket-io-response.ts:13-38`) |
+| MOD-048 | MCP request, payload and response models (stdio and streamable HTTP transports, env KV pairs, roots, resource subscriptions) and subscription clearing | P2 | M7 | heric-model | `models.md` § gRPC / WebSocket / Socket.IO / MCP (`models/mcp-request.ts:13-74`; `mcp-payload.ts:13-29`; `mcp-response.ts:11-50`; `node-src/services/mcp-request.ts:39-43`) |
+| MOD-049 | ApiSpec `{fileName, contentType yaml\|json, contents}` with get-or-create per workspace | P1 | M6 | heric-model | `models.md` § API spec, tests, mocks, protos (`models/api-spec.ts:16-34`, `node-src/services/api-spec.ts:10-25`) |
+| MOD-050 | UnitTestSuite/UnitTest tree with `requestId` link, code and reference rewriting | P1 | M5 | heric-model | `models.md` § API spec, tests, mocks, protos (`models/unit-test-suite.ts:15-30`, `unit-test.ts:15-42`) |
+| MOD-051 | UnitTestResult (Mocha `TestResults`, null at init) and RunnerTestResult with per-iteration results, versioned `'1'` | P2 | M5 | heric-model | `models.md` § API spec, tests, mocks, protos (`models/unit-test-result.ts:15-59`; `runner-test-result.ts:13-66`) |
+| MOD-052 | MockServer and MockRoute models with defaults (`/`, GET, 200, `application/json`) | P2 | M7 | heric-model | `models.md` § API spec, tests, mocks, protos (`models/mock-server.ts:15-33`, `node-src/services/mock-server.ts:38-41`; `models/mock-route.ts:16-44`) |
+| MOD-053 | ProtoDirectory/ProtoFile tree with `pd`/`pf` prefixes | P2 | M4 | heric-model | `models.md` § API spec, tests, mocks, protos (`models/proto-directory.ts`, `models/proto-file.ts`) |
+| MOD-054 | Settings singleton with 60+ defaults, hotkey registry migration and conflict repair | P2 | M1 | heric-model | `models.md` § Platform/admin (`models/settings.ts:28-101`, `init-model/settings.ts:5-100`, `node-src/services/settings.ts:30-41`) |
+| MOD-055 | Stats counters and increment helper | P2 | M7 | heric-model | `models.md` § Platform/admin (`models/stats.ts:13-38`, `node-src/services/stats.ts:29-41`) |
+| MOD-056 | UserSession with encrypted key material, vault salt/key and hashed account id (local parts only) | P2 | M7 | heric-model | `models.md` § Platform/admin (`models/user-session.ts:3-46`) |
+| MOD-057 | OAuth2 token cache per request/group with debug `xResponseId`/`xError` fields | P2 | M3 | heric-model | `models.md` § Platform/admin (`models/o-auth-2-token.ts:13-46`) |
+| MOD-058 | PluginData key/value store | P2 | M7 | heric-model | `models.md` § Platform/admin (`models/plugin-data.ts:13-29`) |
+| MOD-059 | GitRepository and GitCredentials models (cache fields, migration version, user-chosen directory, V1/V2 guards, renewal) | P2 | M6 | heric-model | `models.md` § Platform/admin (`models/git-repository.ts:40-121`; `models/git-credentials.ts:40-187`) |
+| MOD-060 | CloudCredentials model (AWS temporary/file/SSO, GCP, Azure, HashiCorp HCP/on-prem) retained for data compatibility only | P2 | M2 | heric-model | `models.md` § Platform/admin (`models/cloud-credential.ts:5-133`) |
+| MOD-061 | CA certificate and client certificate models with host-matching filter (exact host+port preferred) | P2 | M3 | heric-model | `models.md` § Platform/admin (`models/ca-certificate.ts:14-31`, `models/client-certificate.ts:15-56`) |
+| MOD-062 | Schema compatibility checker reporting `match`/`strict-match`/`match-with-unknown-fields`/`mismatch` with union-branch scoring; only 15 of 44 models carry a zod schema | P2 | M2 | heric-model | `models.md` § Platform/admin (`packages/insomnia/src/common/zod/check-doc-compatibility.ts:7-64`, `check-schema-mismatch.ts:29-122`) |
+| MOD-063 | VCS ignore/reset rules (`modified` deleted; `Workspace.parentId` and `ProjectLintRuleset.parentId` reset to null) | P2 | M6 | heric-model | `models.md` § Platform/admin (`models/utils/ignore-keys.ts:5-57`) |
+
+### Storage
+
+| ID | Feature | Priority | Milestone | Crate | Source |
+|---|---|---|---|---|---|
+| STO-001 | NeDB-compatible document store: 44 file-per-type collections named `insomnia.<Type>.db`, autoload and 10% corruption tolerance | P0 | M1 | heric-storage | `storage.md` § Feature list (NeDB document store `database-nedb.ts:242-441`); `models.md` § Core model + persistence (`database-nedb.ts:242-434`); `structure.md` § Process, storage and data model (NeDB persistence) |
+| STO-002 | Pluggable database backend: one engine per binary with renderer/plugin IPC bridges and in-memory tests | P0 | M1 | heric-storage | `storage.md` § Feature list (Pluggable database backend); `structure.md` § Process, storage and data model (Database IPC bridge) |
+| STO-003 | CRUD primitives: insert, full-document upsert, `docCreate`/`docUpdate`, duplicate, `remove`, `unsafeRemove` | P0 | M1 | heric-storage | `storage.md` § Feature list (CRUD primitives `database-nedb.ts:120-204`, `:443-518`); `models.md` § Core model + persistence (CRUD contract) |
+| STO-004 | Ancestor/descendant traversal used by sync and cascade delete | P1 | M1 | heric-storage | `storage.md` § Feature list (Hierarchy traversal `database-nedb.ts:521-607`); `models.md` § Core model + persistence (`withAncestors`, `getWithDescendants`) |
+| STO-005 | Change buffering, flush control and `db.changes` broadcast to all windows, with insert/update/remove patches | P0 | M1 | heric-storage | `storage.md` § Feature list (Change buffering and broadcast); `models.md` § Core model + persistence (`database-nedb.ts:55-113,610-625`) |
+| STO-006 | Startup database repairs (sync flags, API spec names, base environments, cookie jars, legacy git URIs), keeping `modified` stable for no-op repairs | P1 | M2 | heric-storage | `storage.md` § Feature list (Startup repairs `repair-database.ts:13-141`); `models.md` § Core model + persistence (`node-src/database/repair-database.ts:10-28`, `:35-45`) |
+| STO-007 | v5 YAML write with stable key order, empty-field stripping, Zod validation per branch and `confidentialKeys` instead of secrets | P0 | M2 | heric-storage | `storage.md` § Feature list (YAML v5 export/import); `io-and-cli.md` § Export formats and versions (v5 YAML, table rows 1-2); `fixtures.md` § Feature list (v5 write); `structure.md` § Process, storage and data model (Schema migrations) |
+| STO-008 | v5 YAML read with schema migration 5.0 to 5.1 and the five file-type discriminators (`collection`, `spec`, `environment`, `mock`, `mcpClient`) | P0 | M2 | heric-storage | `storage.md` § Feature list (YAML v5 export/import; `import-v5-parser.ts:435-495`); `io-and-cli.md` § Export formats and versions (scope to `type` map); `fixtures.md` § Feature list (v5 read) |
+| STO-009 | v5 import-export round-trip fixed point after normalizing ids and timestamps | P0 | M2 | heric-storage | `fixtures.md` § Feature list (v5 round-trip `import-export-roundtrip.test.ts:80-94`); `io-and-cli.md` § Export formats and versions |
+| STO-010 | YAML schema migration 5.0 to 5.1 normalization (header/parameter and script cleanup, property ordering) | P1 | M2 | heric-storage | `storage.md` § Feature list (YAML schema migration); `io-and-cli.md` § Export formats and versions (`migrateToLatestYaml`) |
+| STO-011 | Git repository structure migration (v1: `git/` to `.git/`, legacy `other/` to root, DB-only YAML to `insomnia.<id>.yaml`) with idempotent version stamp and disk override | P0 | M6 | heric-storage | `storage.md` § Feature list (Git repo structure migration, P0); `io-and-cli.md` § Git sync (row 27, P1) |
+| STO-012 | Legacy `.insomnia` folder import into the current repo layout, rejecting unsyncable models | P0 | M6 | heric-storage | `storage.md` § Feature list (Legacy `.insomnia` folder import, P0); `io-and-cli.md` § Git sync (row 28, P1) |
+| STO-013 | Bidirectional repo file sync: filesystem watch plus 10 s polling, hash/mtime loop prevention, orphan deletion and ruleset flush | P0 | M6 | heric-storage | `io-and-cli.md` § Feature list (row 23, P0); `storage.md` § Feature list (Bidirectional repo sync, P1) |
+| STO-014 | Pre-upgrade backup and guarded restore of the database files | P1 | M2 | heric-storage | `storage.md` § Feature list (Backup and restore, P1); `structure.md` § Platform and operations (Backup before upgrade, P2) |
+| STO-015 | Response blob storage: `<id>.response` and `<id>.timeline` under `responses/`, with retention | P1 | M1 | heric-storage | `storage.md` § Feature list (Response blob storage); `storage.md` § Import/migration risks (Blob pointer integrity) |
+| STO-016 | Key-value preference store: one file per key under `localStorage/`, debounced sync writes | P1 | M2 | heric-storage | `storage.md` § Feature list (Electron key-value storage) |
+| STO-017 | Secret storage: OS-encrypted string store with a documented plaintext fallback when encryption is unavailable | P0 | M3 | heric-storage | `platforms.md` § Feature list (row 4, P0); `structure.md` § Process, storage and data model (Secret storage, P1); `storage.md` § Feature list (Secret storage, P2) |
+| STO-018 | Git credential migration: one-time unification gated by a stored flag | P1 | M6 | heric-storage | `storage.md` § Feature list (Git credential migration) |
+| STO-019 | Organization migrations: VCS projects into organizations and the Konnect organization migration | P2 | M2 | heric-storage | `storage.md` § Feature list (Organization migrations) |
+| STO-020 | Datafile read protection: block `insomnia.*.db` from templates and plugins, with symlink and hard-link guards | P1 | M1 | heric-storage | `storage.md` § Feature list (Datafile read protection); `templating.md` § Feature list (row 20) |
+| STO-021 | Deterministic and special ids (`sha1(parentId)` base environments, scratchpad ids, `gr_`-encoded repository ids) | P1 | M2 | heric-storage | `storage.md` § Feature list (Deterministic and special ids); `models.md` § Environment (Deterministic single base environment) |
+| STO-022 | Version telemetry fields (`Stats.currentVersion`/`lastVersion`) written on startup, kept local only | P2 | M7 | heric-storage | `storage.md` § Feature list (Version telemetry) |
+
+### HTTP and auth
+
+| ID | Feature | Priority | Milestone | Crate | Source |
+|---|---|---|---|---|---|
+| HTTP-001 | Send pipeline orchestration (render, plugin transform, auth, curl, cookies, timeline, after-response script, response patch), reused by the runner and CLI | P0 | M1 | heric-http | `structure.md` § Request execution (Send pipeline); `http.md` § Feature list (rows 46, 59) |
+| HTTP-002 | HTTP engine: request executed off the GUI thread with the response body streamed to disk | P0 | M1 | heric-http | `http.md` § Feature list (row 1, **LP**:104-278); `structure.md` § Request execution (libcurl engine with cancellation) |
+| HTTP-003 | Method handling: HEAD to NOBODY, POST to POST, everything else through CUSTOMREQUEST | P0 | M1 | heric-http | `http.md` § Feature list (row 2, **LP**:140-148) |
+| HTTP-004 | Body types: raw text, urlencoded rebuild, single-file upload and multipart temporary file | P0 | M1 | heric-http | `http.md` § Feature list (row 3, **LP**:150-174, :603-632) |
+| HTTP-005 | Multipart builder with fixed boundary and MIME lookup | P0 | M1 | heric-http | `http.md` § Feature list (row 4, `main/network/multipart.ts:16-118`) |
+| HTTP-006 | Multipart part paths checked against `dataFolders` before reading | P0 | M1 | heric-http | `http.md` § Feature list (row 5, **LP**:620-632) |
+| HTTP-007 | Header assembly with overrides, defaults and suppression sentinels | P0 | M1 | heric-http | `http.md` § Feature list (row 6, `network/parse-header-strings.ts:33-101`) |
+| HTTP-008 | Folder and request header inheritance with single-value header rules | P0 | M1 | heric-http | `http.md` § Feature list (row 7, **NET**:77-111, `common/common-headers.ts:8-19`); `structure.md` § Request execution (Inheritance and defaults) |
+| HTTP-009 | Default `User-Agent: insomnia/<version>` and its suppression | P1 | M1 | heric-http | `http.md` § Feature list (row 8, **LP**:516-523; **NET**:114-128) |
+| HTTP-010 | `Accept: */*` default with no implicit `Accept-Encoding` or content-type | P1 | M1 | heric-http | `http.md` § Feature list (row 9, `parse-header-strings.ts:78-90`) |
+| HTTP-011 | HTTP version selection including HTTP/3 and prior-knowledge HTTP/2 | P1 | M3 | heric-http | `http.md` § Feature list (row 10, **LP**:408-413, :637-661) |
+| HTTP-012 | Redirect following with per-request override and a maximum-redirect cap | P0 | M1 | heric-http | `http.md` § Feature list (row 11, **LP**:415-419, :472-479) |
+| HTTP-013 | Optional path dot-segment preservation | P2 | M1 | heric-http | `http.md` § Feature list (row 12, **LP**:481-484) |
+| HTTP-014 | Whole-request timeout, disabled with 0 | P0 | M1 | heric-http | `http.md` § Feature list (row 13, **LP**:452-457) |
+| HTTP-015 | Cancellation mid-flight producing an Abort status | P0 | M1 | heric-http | `http.md` § Feature list (row 14, **LP**:187-192, :265-268; `cancellation.renderer.ts:38-58`) |
+| HTTP-016 | Response headers per redirect hop with the last hop promoted | P0 | M1 | heric-http | `http.md` § Feature list (row 15, **LP**:559-580; **NET**:958) |
+| HTTP-017 | Raw header parsing preserving duplicate `Set-Cookie` headers | P0 | M1 | heric-http | `http.md` § Feature list (row 16, **LP**:231, :559) |
+| HTTP-018 | Response body to file with byte counters and total time | P0 | M1 | heric-http | `http.md` § Feature list (row 17, **LP**:196-200, :234-240) |
+| HTTP-019 | Decompression with a single retry without `Accept-Encoding` | P1 | M1 | heric-http | `http.md` § Feature list (row 18, **LP**:372, :250-276) |
+| HTTP-020 | Cookie sending from the jar in Netscape format and from a manual cookie list | P0 | M3 | heric-http | `http.md` § Feature list (row 19, **LP**:486-513) |
+| HTTP-021 | Cookie storing with origin tagging and rejection reporting | P0 | M3 | heric-http | `http.md` § Feature list (row 20, `network/set-cookie-util.ts:8-44`; **NET**:945-956) |
+| HTTP-022 | Per-workspace cookie jar persistence | P0 | M3 | heric-http | `http.md` § Feature list (row 21, **NET**:955; `main/ipc/cookies.ts:66-84`); `models.md` § Cookie jar (CookieJar model) |
+| HTTP-023 | Server-set cookies never re-rendered as templates | P1 | M3 | heric-http | `http.md` § Feature list (row 22, `common/render.ts:887-908`) |
+| HTTP-024 | Client certificates selected by host and port with wildcards and a disabled flag | P0 | M3 | heric-http | `http.md` § Feature list (row 23, `insomnia-data/src/models/client-certificate.ts:44-56`); `models.md` § Platform/admin (CA and client certificate models) |
+| HTTP-025 | PEM and P12 client certificates with key, passphrase and allowlist enforcement | P0 | M3 | heric-http | `http.md` § Feature list (row 24, **LP**:380-406); `platforms.md` § Feature list (row 25) |
+| HTTP-026 | Workspace CA certificate as a PEM blob plus the system native CA store | P0 | M3 | heric-http | `http.md` § Feature list (row 25, **LP**:375-378); `platforms.md` § Feature list (row 24) |
+| HTTP-027 | Disable TLS verification for host and peer | P0 | M3 | heric-http | `http.md` § Feature list (row 26, **LP**:461-465); `platforms.md` § Feature list (row 27) |
+| HTTP-028 | Separate `validateAuthSSL` switch for OAuth token requests | P1 | M3 | heric-auth | `http.md` § Feature list (row 27, `o-auth-2/get-token.ts:667`) |
+| HTTP-029 | Manual proxy per scheme with `noProxy` host and CIDR support | P0 | M3 | heric-http | `http.md` § Feature list (row 28, **LP**:438-450, :664-681) |
+| HTTP-030 | System proxy resolution when the proxy setting is disabled | P0 | M3 | heric-http | `http.md` § Feature list (row 29, **LP**:421-436, :296-341); `platforms.md` § Feature list (row 21) |
+| HTTP-031 | Proxy credentials from URL userinfo under any auth scheme | P1 | M3 | heric-http | `http.md` § Feature list (row 30, **LP**:445) |
+| HTTP-032 | Application-level proxy configuration with `requests`/`all` scope and first-party bypass list | P0 | M3 | heric-http | `http.md` § Feature list (row 31, `main/proxy.ts:72-137`); `platforms.md` § Feature list (row 20, P0) |
+| HTTP-033 | Scripts and plugins cannot use the proxy or inject credentials and certificates | P0 | M3 | heric-http | `http.md` § Feature list (row 32, `templating-worker-database.ts:817-843`; `plugins/context/network.ts:67-73`) |
+| HTTP-034 | Basic authentication, UTF-8 or ISO-8859-1 | P0 | M3 | heric-auth | `http.md` § Feature list (row 33, `get-auth-header.ts:66-70`) |
+| HTTP-035 | Bearer authentication with a custom prefix or no prefix | P0 | M3 | heric-auth | `http.md` § Feature list (row 34, `get-auth-header.ts:17-26, 72-75`) |
+| HTTP-036 | API key in header, cookie or query parameter | P0 | M3 | heric-auth | `http.md` § Feature list (row 35, `get-auth-header.ts:38-64`; **NET**:1016-1028) |
+| HTTP-037 | Digest and NTLM authentication through the HTTP engine | P0 | M3 | heric-auth | `http.md` § Feature list (row 36, **LP**:525-534) |
+| HTTP-038 | netrc authentication | P2 | M3 | heric-auth | `http.md` § Feature list (row 37, **LP**:535-537) |
+| HTTP-039 | AWS IAM (SigV4) signing that rejects file bodies | P1 | M3 | heric-auth | `http.md` § Feature list (row 38, `parse-header-strings.ts:49-66, 118-149`; **LP**:159-161) |
+| HTTP-040 | OAuth 2 grants: implicit, authorization code with PKCE S256 or plain, password, client credentials, refresh | P0 | M3 | heric-auth | `http.md` § Feature list (row 39, `o-auth-2/get-token.ts:200-543`) |
+| HTTP-041 | OAuth 2 token cache with folder inheritance, expiry and 401/`invalid_grant` invalidation | P0 | M3 | heric-auth | `http.md` § Feature list (row 40, `o-auth-2/get-token.ts:495-543`) |
+| HTTP-042 | OAuth 2 token-request timeline surfaced in the main request timeline | P1 | M3 | heric-auth | `http.md` § Feature list (row 41, `o-auth-2/get-token.ts:379-386, 484-491`) |
+| HTTP-043 | OAuth 1.0a with HMAC-SHA1/256, RSA-SHA1, PLAINTEXT and body hash | P1 | M3 | heric-auth | `http.md` § Feature list (row 42, `o-auth-1/get-token.ts:15-116`) |
+| HTTP-044 | Hawk authentication with optional payload validation | P2 | M3 | heric-auth | `http.md` § Feature list (row 43, `get-auth-header.ts:112-140`) |
+| HTTP-045 | ASAP (JWT) authentication | P2 | M3 | heric-auth | `http.md` § Feature list (row 44, `get-auth-header.ts:142-170`) |
+| HTTP-046 | Interactive OAuth through an embedded window or the default browser with an encrypted relay | P1 | M3 | heric-auth | `http.md` § Feature list (row 45, `o-auth-2/get-token.ts:101-154, 290-330`) |
+| HTTP-047 | Pre-request rendering, plugin hooks and plugin default headers | P0 | M1 | heric-http | `http.md` § Feature list (row 46, `send.tsx:232-249`; `apply-default-headers.ts:6`) |
+| HTTP-048 | Pre-request and after-response script hooks with `skipRequest` and script-generated error responses | P0 | M5 | heric-script | `http.md` § Feature list (row 47, `send.tsx:175-222, 293-322`; **NET**:274, :743) |
+| HTTP-049 | Confidential-value redaction of timeline, response URL and test results | P0 | M1 | heric-http | `http.md` § Feature list (row 48, `sensitive-value-collector.ts:63-112`; **NET**:907-910); `protocols.md` § Feature list (row 65); `structure.md` § Request execution (Sensitive value redaction) |
+| HTTP-050 | Response history with `maxHistoryResponses` pruning | P1 | M1 | heric-http | `http.md` § Feature list (row 49, `send.tsx:361`; `settings.ts:62`); `models.md` § HTTP request / response (Response creation) |
+| HTTP-051 | Save response body to a chosen file or download path | P1 | M1 | heric-http | `http.md` § Feature list (row 50, `send.tsx:82-109, 366-390`) |
+| HTTP-052 | Console-style timeline with header/data prefixes and size caps | P0 | M1 | heric-http | `http.md` § Feature list (row 51, `response-timeline-viewer.tsx:13-36`; **LP**:202-228); `structure.md` § Request execution (Request timeline) |
+| HTTP-053 | Step timer for pre-request, render, send and after-response phases | P1 | M1 | heric-http | `http.md` § Feature list (row 52, `request-timing.ts`; `use-execution-state.ts:5-49`) |
+| HTTP-054 | Streaming HTTP connection with an NDJSON event log | P1 | M4 | heric-http | `http.md` § Feature list (row 53, **CURL**:137-377, :450-484) |
+| HTTP-055 | At most one streaming connection per request id | P1 | M4 | heric-http | `http.md` § Feature list (row 54, **CURL**:143-148) |
+| HTTP-056 | Close all streaming connections when the window closes | P2 | M4 | heric-http | `http.md` § Feature list (row 55, **CURL**:509) |
+| HTTP-057 | Unix domain socket requests through `http(s)://unix:/...` | P2 | M1 | heric-http | `http.md` § Feature list (row 56, **NET**:1053-1055; **LP**:363) |
+| HTTP-058 | Test-only `X-Mockbin-Test` header injection | P2 | M1 | heric-http | `http.md` § Feature list (row 60, **LP**:176-179) |
+
+### Templating
+
+| ID | Feature | Priority | Milestone | Crate | Source |
+|---|---|---|---|---|---|
+| TPL-001 | Liquid engine with strict variables (default on), strict filters, JS truthiness, own-property-only, no dynamic partials, render limit 10 000 and memory limit 10 000 000 | P0 | M1 | heric-template | `templating.md` § P0 (row 1, `common/templating/liquid-engine.ts:21-42`) |
+| TPL-002 | Comment stripping for `{# ... #}` including multiline comments, before parsing | P0 | M1 | heric-template | `templating.md` § P0 (row 2, `liquid-engine.ts:11-13`; `templating/index.ts:52`) |
+| TPL-003 | Delimiter short-circuit: input without `{{`, `{%` or `{#` is returned untouched | P0 | M1 | heric-template | `templating.md` § P0 (row 3, `templating/index.ts:34-39`; `common/render.ts:632-638`) |
+| TPL-004 | Dual render context: every key resolvable both at the root and under `_` | P0 | M1 | heric-template | `templating.md` § P0 (row 4, `templating/index.ts:44`; `common/templating/constants.ts:1-2`) |
+| TPL-005 | Structured render errors with message, path, line and column, reason `undefined`/`error`, and undefined variable names | P0 | M1 | heric-template | `templating.md` § P0 (row 5, `common/templating/render-error.ts:28-74`) |
+| TPL-006 | Tag argument tokenizer for quoted strings with escapes, booleans, numbers, variables and expressions | P0 | M1 | heric-template | `templating.md` § P0 (row 6, `common/templating/tokenize-args.ts:3-92`; `resolve-arg.ts:5-10`) |
+| TPL-007 | All twelve built-in tags: faker, base64, now, uuid, os, hash, file, jsonpath, cookie, prompt, response, request | P0 | M3 | heric-template | `templating.md` § P0 (row 7, `common/templating/local-template-tags.ts:17-1016`); `structure.md` § Templating and scripting (Local template tags) |
+| TPL-008 | Environment layering: global root/sub, collection root/sub, folder ancestors, iteration and transient, with later layers winning and JSON property order preserved | P0 | M1 | heric-template | `templating.md` § P0 (row 8, `common/render.ts:129-290, :355-594`) |
+| TPL-009 | Template-last key ordering plus a three-pass render of the merged context, skipping unchanged values | P0 | M1 | heric-template | `templating.md` § P0 (row 9, `common/render.ts:999-1007, :553-577`) |
+| TPL-010 | Recursive object and array render with disabled-entry skipping, first-level `_` path reuse, blacklist regex and immutable input | P0 | M1 | heric-template | `templating.md` § P0 (row 10, `common/render.ts:600-712`) |
+| TPL-011 | Second render pass only when the first output gained `{%` and the original input had no tags (injection guard) | P0 | M1 | heric-template | `templating.md` § P0 (row 11, `common/render.ts:649-659`) |
+| TPL-012 | Request-level render: header and auth inheritance, description at lower priority, only manual cookies rendered, gRPC variants | P0 | M1 | heric-template | `templating.md` § P0 (row 12, `common/render.ts:837-935, :805-835`) |
+| TPL-013 | `{% response %}` with resend policies, cycle guard, send-only resend, JSONBig JSONPath, XPath and masked-URL refusal | P0 | M3 | heric-template | `templating.md` § P0 (row 13, `local-template-tags.ts:570-806`) |
+| TPL-014 | Tag execution contract `run(context, ...args)` with app/store/network/util, render purpose and metadata; results stringified with null to empty | P0 | M1 | heric-template | `templating.md` § P0 (row 14, `templating/liquid-extension.ts:36-126`; `liquid-extension-worker.ts:78-212`) |
+| TPL-015 | Confidential-value policy and masking at merge time: reveal for send and scripts, conditional for preview, fail-closed for undefined, mask `••••••` | P0 | M1 | heric-template | `templating.md` § P0 (row 15, `confidential-value-policy.ts:23-42`; `common/render.ts:456-483`) |
+| TPL-016 | Vault decrypt and mask without mutating persisted data | P0 | M3 | heric-template | `templating.md` § P0 (row 16, `mask-or-decrypt-vault-data.ts:15-63`); `structure.md` § Process, storage and data model (Session and vault key storage) |
+| TPL-017 | `{% prompt %}` never blocks outside the send purpose | P0 | M3 | heric-template | `templating.md` § P0 (row 17, `local-template-tags.ts:428-472`) |
+| TPL-018 | Base64-wrapped tag arguments, encoded on save and decoded at run | P1 | M3 | heric-template | `templating.md` § P1 (row 18, `common/templating/utils.ts:115-144`) |
+| TPL-019 | Self-recursive variable support (`base_url: '{{ base_url }}/foo'`) | P1 | M3 | heric-template | `templating.md` § P1 (row 19, `common/render.ts:415-445`) |
+| TPL-020 | `{% file %}` reads through a host allowlist (tmpdir, responses, version-control, user folders), refusing database files and hard-link aliases | P1 | M3 | heric-template | `templating.md` § P1 (row 20, `local-template-tags.ts:278-284`; `main/secure-read-file.ts:32-60`) |
+| TPL-021 | Sensitive-value collection and redaction for send, returned from the worker as keyed messages | P1 | M3 | heric-template | `templating.md` § P1 (row 21, `common/templating/types.ts:70-76`; `render-context-serialization.ts:19, :52-56`) |
+| TPL-022 | `allowTags: false` interpolation-only mode with a separate cached tagless engine | P1 | M3 | heric-template | `templating.md` § P1 (row 22, `templating/index.ts:51, :135-146`) |
+| TPL-023 | Tag definition metadata for editors and plugins (args, actions, hide, validate, display name), filtered and priority-sorted | P1 | M3 | heric-template | `templating.md` § P1 (row 23, `templating/index.ts:81-96`; `ui/templating/worker.ts:79-94`) |
+| TPL-024 | Plugin tag registration with priority so user plugins can override a built-in by name | P1 | M3 | heric-template | `templating.md` § P1 (row 24, `templating/index.ts:105-122`) |
+| TPL-025 | Purpose-gated masking of the external vault tag before any provider fetch | P1 | M3 | heric-template | `templating.md` § P1 (row 25, `confidential-value-policy.ts:55-72`; `liquid-extension.ts:108-113`) |
+| TPL-026 | Cookie-jar lookup honoring URL scoping versus whole-jar access, exact case-sensitive name match | P1 | M3 | heric-template | `templating.md` § P1 (row 26, `local-template-tags.ts:345-367, :926-940`) |
+| TPL-027 | CodeMirror `nunjucks` mode overlaying the base mode and tracking raw blocks | P1 | M7 | apps/gui | `templating.md` § P1 (row 27, `ui/components/.client/codemirror/modes/nunjucks.ts:1-83`) |
+| TPL-028 | Tag editor preview using the preview purpose with a reveal toggle; preview context cached 5 s | P1 | M7 | apps/gui | `templating.md` § P1 (row 28, `ui/components/templating/tag-editor.tsx:93-96, :254-300`; `use-nunjucks.ts:82`) |
+| TPL-029 | Renderer-safe stubs so linting and codegen never load Node code (render returns input unchanged) | P1 | M7 | apps/gui | `templating.md` § P1 (row 29, `ui/templating/renderer-safe.ts:10-52`) |
+| TPL-030 | Error-path fidelity in rendered requests (`_request.headers[0].value` style paths) | P1 | M1 | heric-template | `templating.md` § P1 (row 30, `common/render.ts:613-712`; `render.test.ts:1266-1296`) |
+| TPL-031 | Persistent worker render path with reload protocol and auth-token forwarding | P2 | M7 | apps/gui | `templating.md` § P2 (row 31, `ui/worker/templating-handler.ts:7-41`; `templating.worker.ts:19-52`) |
+| TPL-032 | Render-context serialization across the worker boundary (functions stripped; purpose, settings and render id travel separately) | P2 | M7 | heric-template | `templating.md` § P2 (row 32, `render-context-serialization.ts:22-57`) |
+| TPL-033 | QuickJS sandbox for user plugin tags: 10 s timeout, 32 MB heap, default-deny modules and capabilities, elevated escape hatch | P2 | M7 | heric-template | `templating.md` § P2 (row 33, `templating/sandbox/plugin-tag-sandbox.ts:54-90`; `common/plugins/sandbox-mode.ts:23-56`) |
+| TPL-034 | IPC routing for tag helpers (file read, OS, encode/decode, network send, cookie jar, response body, settings, plugin data) | P2 | M3 | heric-template | `templating.md` § P2 (row 34, `main/templating-worker-database.ts:654-778`; `liquid-extension-worker.ts:90-184`) |
+| TPL-035 | Platform mapping for `app.getInfo()` inside the worker | P2 | M7 | heric-template | `templating.md` § P2 (row 35, `liquid-extension-worker.ts:87-88`) |
+| TPL-036 | Postman dynamic-variable import (`{{$guid}}` to a faker tag) | P2 | M5 | heric-import | `templating.md` § P2 (row 36, `main/importers/importers/postman.ts:62-66`) |
+| TPL-037 | Konnect route sanitization stripping template syntax from external control-plane data | P2 | M7 | heric-import | `templating.md` § P2 (row 37, `konnect/transform.ts:12-29, :37-53`) |
+| TPL-038 | GraphQL body `#}` rewritten to `# }` before render | P2 | M4 | heric-template | `templating.md` § P2 (row 38, `common/render.ts:870-878`) |
+| TPL-039 | Renderer `getTagDefinitions()` through the plugin renderer bridge | P2 | M7 | apps/gui | `templating.md` § P2 (row 39, `ui/templating/renderer-safe.ts:23-52`) |
+| TPL-040 | Hung-render breadcrumb logged after 5 s without aborting | P2 | M1 | heric-template | `templating.md` § P2 (row 40, `templating/index.ts:49`) |
+
+### Scripting
+
+| ID | Feature | Priority | Milestone | Crate | Source |
+|---|---|---|---|---|---|
+| SCR-001 | Pre-request and after-response script execution, sequential, with per-request timeout | P0 | M5 | heric-script | `scripting.md` § P0 (item 1, `network.ts:274-397,743-802`; `concurrency.renderer.ts:56-80`) |
+| SCR-002 | Isolated script context injecting `insomnia`, `console`, lodash-compatible `_`, `setTimeout`, `$` alias and strict mode, with returned-context merging | P0 | M5 | heric-script | `scripting.md` § P0 (item 2, `run-script.ts:31-94`) |
+| SCR-003 | `insomnia.environment`, `baseEnvironment`, `variables` with 7-scope precedence, `globals`, `baseGlobals`, `iterationData` and `collectionVariables` | P0 | M5 | heric-script | `scripting.md` § P0 (item 3, `environments.ts:195-367`) |
+| SCR-004 | `insomnia.request` full mutation API (URL, query, headers, body, auth) and `size()` | P0 | M5 | heric-script | `scripting.md` § P0 (item 4, `request.ts:282-471`) |
+| SCR-005 | `insomnia.response` read API (body, code, headers, cookies, `json()`, `text()`, response time, original request) | P0 | M5 | heric-script | `scripting.md` § P0 (item 5, `response.ts:54-207`) |
+| SCR-006 | `insomnia.test`, `.skip`, `insomnia.expect` backed by chai, plus `response.to.*` assertions | P0 | M5 | heric-script | `scripting.md` § P0 (item 6, `test.ts:6-61`; `response.ts:208-357`) |
+| SCR-007 | Error surfacing: security-policy passthrough, prefixed runtime errors, timeout messages and timeline logging | P0 | M5 | heric-script | `scripting.md` § P0 (item 7, `entry.hidden-window.ts:34-68`; `network.ts:692-703`) |
+| SCR-008 | Persistence of script mutations (environment, base environment, globals, cookies, request) after execution | P0 | M5 | heric-script | `scripting.md` § P0 (item 8, `network.ts:403-487`) |
+| SCR-009 | `console.*` capture into the request timeline | P0 | M5 | heric-script | `scripting.md` § P0 (item 9, `console.ts:69-127`; `network.ts:663-665`) |
+| SCR-010 | `insomnia.sendRequest` callback-style sub-request execution without side effects | P0 | M5 | heric-script | `scripting.md` § P0 (item 10, `insomnia.ts:106-111`; `send-request.ts:20-45`) |
+| SCR-011 | `insomnia.info` (event name, iteration, iteration count, request name and id) and execution location | P0 | M5 | heric-script | `scripting.md` § P0 (item 11, `request-info.ts:26-100`; `execution.ts:7-40`) |
+| SCR-012 | `require` allowlist with 12 modules and 8 Node built-ins, plus collection namespaces | P1 | M5 | heric-script | `scripting.md` § P1 (item 12, `require-interceptor.ts:14-99`) |
+| SCR-013 | Static AST sandbox: 18 blocked properties and 12 blocked roots, alias and destructuring tracking, import blocking | P1 | M5 | heric-script | `scripting.md` § P1 (item 13, `sandbox.ts:74-254`; `script-security-rules.ts:14-150`) |
+| SCR-014 | Runtime interceptors for `require`, `window` and `eval`, plus 9 mask rules | P1 | M5 | heric-script | `scripting.md` § P1 (item 14, `script-security-policy.ts:9-60`; `script-security-rules.ts:152-216`) |
+| SCR-015 | Security settings UI with per-rule disabling | P1 | M7 | apps/gui | `scripting.md` § P1 (item 15, `scripting-settings.tsx:151-411`) |
+| SCR-016 | Cookie API: `insomnia.cookies` list object plus `jar()` callback API, persisted back with source `manual` | P1 | M5 | heric-script | `scripting.md` § P1 (item 16, `cookies.ts:180-381`) |
+| SCR-017 | Vault access gated by `enableVaultInScripts`, decrypting on use | P1 | M5 | heric-script | `scripting.md` § P1 (item 17, `insomnia.ts:180-183`; `network.ts:524-534`) |
+| SCR-018 | Client-certificate selection per request and certificate/request merge rules | P1 | M5 | heric-script | `scripting.md` § P1 (item 18, `insomnia.ts:210-239`; `request.ts:497-578`) |
+| SCR-019 | Proxy resolution from settings with SDK proxy-option translation | P1 | M5 | heric-script | `scripting.md` § P1 (item 19, `proxy-configs.ts:299-382`) |
+| SCR-020 | `insomnia.parentFolders` and folder-level environment resolution | P1 | M5 | heric-script | `scripting.md` § P1 (item 20, `folders.ts:69-147`; `network.ts:296-305`) |
+| SCR-021 | `insomnia.execution.skipRequest()` and `setNextRequest()` | P1 | M5 | heric-script | `scripting.md` § P1 (item 21, `execution.ts:25-40`) |
+| SCR-022 | Postman script translation on import and paste (`pm.*` to `insomnia.*`, about 40 preprocess rules) | P1 | M5 | heric-import | `scripting.md` § P1 (item 22, `translate-postman-script.ts:18-208`) |
+| SCR-023 | Async task tracking through proxied promises and four bridge operations | P1 | M5 | heric-script | `scripting.md` § P1 (item 23, `async-objects.ts:11-84`; `run-script.ts:43-54`) |
+| SCR-024 | Interpolation inside scripts: Liquid `{{ }}` and `{% %}` plus faker variables | P1 | M5 | heric-script | `scripting.md` § P1 (item 24, `interpolator.ts:8-53`) |
+| SCR-025 | Autocomplete catalog of 227 snippets with editor snippet menus | P1 | M7 | apps/gui | `scripting.md` § P1 (item 25, `autocomplete-snippets.json`; `request-script-editor.tsx:157-505`) |
+| SCR-026 | QuickJS-WASM sandbox behind a kill switch, reduced API surface, text bodies only | P2 | M7 | heric-script | `scripting.md` § P2 (item 26, `run-script-quickjs.ts:18`; `quickjs-script-engine.ts:20-277`) |
+| SCR-027 | Node main-process script executor with the documented globals-mapping defect | P2 | M7 | heric-script | `scripting.md` § P2 (item 27, `script-executor.ts:99-106`) |
+| SCR-028 | Legacy Mocha unit-test framework: code generation, temporary-file execution, 60 s timeout, legacy flag | P2 | M5 | heric-script | `scripting.md` § P2 (item 28, `packages/insomnia-testing/`) |
+| SCR-029 | Documented throwing or rejected stubs (`ProxyConfig.updateProtocols`, `PropertyList.eachParent`, `Response.jsonp`, `Promise.any`) | P2 | M5 | heric-script | `scripting.md` § P2 (item 29) |
+| SCR-030 | jQuery-style `$` alias that aliases only `insomnia` | P2 | M5 | heric-script | `scripting.md` § P2 (item 30) |
+
+### Protocols
+
+| ID | Feature | Priority | Milestone | Crate | Source |
+|---|---|---|---|---|---|
+| PRO-001 | GraphQL request type (POST with `application/graphql` body, GQL badge, request preset) | P0 | M4 | heric-protocols | `protocols.md` § Feature list (row 1, `route...request.new.tsx:57-72`; `method-tag.tsx:38`) |
+| PRO-002 | GraphQL send envelope `{query, variables, operationName}` built after render and plugin fixups | P0 | M4 | heric-protocols | `protocols.md` § Feature list (row 2, `graph-ql-editor.tsx:71`; `...send.tsx:247-248`) |
+| PRO-003 | Introspection through the HTTP pipeline as a private `<id>.graphql` request sharing the original OAuth token, 5 KB timeline cap | P0 | M4 | heric-protocols | `protocols.md` § Feature list (row 3, `graph-ql-editor.tsx:110-147,163-171`; `get-auth-header.ts:78-95`) |
+| PRO-004 | Client schema build plus editor intelligence (hint, info, jump, lint) | P1 | M4 | apps/gui | `protocols.md` § Feature list (row 4, `graph-ql-editor.tsx:194,497-514`) |
+| PRO-005 | Schema explorer with navigation history, portaled into `#graphql-explorer-container` | P1 | M4 | apps/gui | `protocols.md` § Feature list (row 5, `graph-ql-editor.tsx:462-473`; `graph-ql-explorer.tsx:74`) |
+| PRO-006 | Local schema import from a JSON introspection file | P1 | M4 | apps/gui | `protocols.md` § Feature list (row 6, `graph-ql-editor.tsx:409`) |
+| PRO-007 | Automatic schema fetch toggle and input-value-deprecation option, persisted in localStorage | P1 | M4 | apps/gui | `protocols.md` § Feature list (row 7, `graph-ql-editor.tsx:268,282-304`) |
+| PRO-008 | Multi-operation detection, cursor selection and dimming of other operations | P1 | M4 | apps/gui | `protocols.md` § Feature list (row 8, `graph-ql-editor.tsx:343,518-591,731`) |
+| PRO-009 | Operation name and variables editors with separate syntax-error tracking | P1 | M4 | apps/gui | `protocols.md` § Feature list (row 9, `graph-ql-editor.tsx:319,328`) |
+| PRO-010 | GraphQL subscriptions over `graphql-transport-ws`: scheme rewrite, `connection_init`, `Subscribe` after `connection_ack` | P1 | M4 | heric-protocols | `protocols.md` § Feature list (row 10, `...connect.tsx:62-89`; `websocket.ts:515-539`) |
+| PRO-011 | Schema fetch status and error display (non-2xx with status and URL, `errors[0]` preferred) | P1 | M4 | apps/gui | `protocols.md` § Feature list (row 11, `graph-ql-editor.tsx:194,392`) |
+| PRO-012 | GraphQL query beautify (no-op on parse failure) | P2 | M4 | apps/gui | `protocols.md` § Feature list (row 12, `graph-ql-editor.tsx:305`) |
+| PRO-013 | Proto file import, single file and recursive directory, validated before persistence | P0 | M4 | heric-protocols | `protocols.md` § Feature list (row 13, `proto-files-modal.tsx:50,100-141,333`) |
+| PRO-014 | Method discovery from local proto files, reloaded on proto change | P0 | M4 | heric-protocols | `protocols.md` § Feature list (row 14, `grpc.ts:104-129`; `grpc-request-pane.tsx:85-88`) |
+| PRO-015 | gRPC server reflection through `grpc-reflection-js` with a distinct cannot-reflect message | P0 | M4 | heric-protocols | `protocols.md` § Feature list (row 15, `grpc.ts:233-285`; `ui/utils/grpc.ts:1-10`) |
+| PRO-016 | Four gRPC method types: unary, client streaming, server streaming, bidi | P0 | M4 | heric-protocols | `protocols.md` § Feature list (row 16, `grpc.ts:321,453-493`) |
+| PRO-017 | Unary call send and cancel, with CANCELLED status suppressed in the UI | P0 | M4 | heric-protocols | `protocols.md` § Feature list (row 17, `grpc.ts:453,563`; `grpc-send-button.tsx`) |
+| PRO-018 | Client and bidi streaming: stream start, send message, commit, cancel, `nextTick` flush | P1 | M4 | heric-protocols | `protocols.md` § Feature list (row 18, `grpc.ts:464,474,510-531`) |
+| PRO-019 | Metadata built from enabled headers only, inherited from parent folders | P0 | M4 | heric-protocols | `protocols.md` § Feature list (row 19, `grpc.ts:581`; `grpc-request-pane.tsx:147`) |
+| PRO-020 | TLS channel credentials for `grpcs:` (CA, client cert/key, rejectUnauthorized), insecure otherwise | P0 | M4 | heric-protocols | `protocols.md` § Feature list (row 20, `grpc.ts:380-414`) |
+| PRO-021 | Per-message response tabs with a gRPC status tag (code 0 OK, non-zero red) | P0 | M4 | apps/gui | `protocols.md` § Feature list (row 21, `grpc-response-pane.tsx`; `grpc-status-tag.tsx`) |
+| PRO-022 | Connection-error translation for TLS, missing cert, wrong version and unimplemented errors | P1 | M4 | apps/gui | `protocols.md` § Feature list (row 22, `ui/utils/grpc.ts:1-20`; `...debug.tsx:286`) |
+| PRO-023 | Request stubs generated from proto definitions (enums, maps, oneofs, name heuristics) | P2 | M4 | heric-protocols | `protocols.md` § Feature list (row 23, `automock.ts:29-220`) |
+| PRO-024 | Proto materialization into `os.tmpdir()/insomnia-grpc` with a path-escape guard and rewrite skipping | P1 | M4 | heric-protocols | `protocols.md` § Feature list (row 24, `write-proto-file.node.ts:18-117`) |
+| PRO-025 | Buf Schema Registry reflection backend with API-key auth and mapped 401/404 errors | P2 | M4 | heric-protocols | `protocols.md` § Feature list (row 25, `grpc.ts:131-231,243-245`) |
+| PRO-026 | gRPC URL parsing for `unix:`, `grpc:` and `grpcs:` with a `grpc://` default | P2 | M4 | heric-protocols | `protocols.md` § Feature list (row 26, `parse-grpc-url.ts`) |
+| PRO-027 | Close all live gRPC calls when the window closes | P1 | M4 | heric-protocols | `protocols.md` § Feature list (row 27, `grpc.ts:592-599`) |
+| PRO-028 | WebSocket connect with headers, query parameters and subprotocols from `sec-websocket-protocol` | P0 | M4 | heric-protocols | `protocols.md` § Feature list (row 28, `websocket.ts:329-346`) |
+| PRO-029 | WebSocket auth limited to basic, API key (header, cookie, query) and bearer | P0 | M4 | heric-auth | `protocols.md` § Feature list (row 29, `websocket.ts:231-260`; `websocket-request-pane.tsx:48`) |
+| PRO-030 | Handshake response with status 101, headers and cookies stored into the jar | P0 | M4 | heric-protocols | `protocols.md` § Feature list (row 30, `websocket.ts:348-397`) |
+| PRO-031 | Live send of the rendered payload, opening the socket first when disconnected | P0 | M4 | heric-protocols | `protocols.md` § Feature list (row 31, `websocket-request-pane.tsx:88-145`; `websocket.ts:584-616`) |
+| PRO-032 | Initial payload sent on open (used by GraphQL `connection_init`) | P1 | M4 | heric-protocols | `protocols.md` § Feature list (row 32, `websocket.ts:447`) |
+| PRO-033 | NDJSON event log with a virtualized, filterable live view and redacted values | P0 | M4 | heric-protocols | `protocols.md` § Feature list (row 33, `websocket.ts:96`; `event-log-view.tsx`) |
+| PRO-034 | readyState broadcast with Connect/Disconnect controls that survive pane unmount | P0 | M4 | heric-protocols | `protocols.md` § Feature list (row 34, `websocket.ts:221,580`; `use-ready-state.ts`) |
+| PRO-035 | WebSocket client certificates (PEM/PFX with passphrase) and certificate timeline entries | P1 | M4 | heric-protocols | `protocols.md` § Feature list (row 35, `websocket.ts:285-320`) |
+| PRO-036 | WebSocket cookie jar store/send with per-request disable switches | P1 | M4 | heric-protocols | `protocols.md` § Feature list (row 36, `websocket.ts:315-322`; `websocket-request.ts:17-24`) |
+| PRO-037 | Unexpected HTTP response surfaced as an inspectable error response with dumped body | P1 | M4 | heric-protocols | `protocols.md` § Feature list (row 37, `websocket.ts:399-430`) |
+| PRO-038 | Close code, reason and `wasClean` display, including unclean 1005 | P1 | M4 | heric-protocols | `protocols.md` § Feature list (row 38, `websocket.ts:468-483`) |
+| PRO-039 | Proxy agent for WebSocket connections when the proxy setting is on | P1 | M4 | heric-protocols | `protocols.md` § Feature list (row 39, `websocket.ts:330,656`) |
+| PRO-040 | `followRedirects` global/on/off mapping with max-redirect cap | P2 | M4 | heric-protocols | `protocols.md` § Feature list (row 40, `websocket.ts:323`) |
+| PRO-041 | WebSocket timeline entries (request preparation, time, HTTP 1.1, header in/out) | P1 | M4 | heric-protocols | `protocols.md` § Feature list (row 41, `websocket.ts:142-172`) |
+| PRO-042 | Close all realtime connections per protocol and globally | P1 | M4 | heric-protocols | `protocols.md` § Feature list (row 42, `websocket.ts:642-654`) |
+| PRO-043 | Realtime history read in reverse chronological order through secure file reads | P1 | M4 | heric-protocols | `protocols.md` § Feature list (row 43, `websocket.ts:644-654`) |
+| PRO-044 | Event stream identified by an exact first `Accept: text/event-stream` header | P0 | M4 | heric-protocols | `protocols.md` § Feature list (row 44, `models/request.ts:399-400`) |
+| PRO-045 | Event-stream request preset (GET plus the Accept header), no dedicated model type | P0 | M4 | apps/gui | `protocols.md` § Feature list (row 45, `...request.new.tsx:76-83`; `constants.ts:231`) |
+| PRO-046 | SSE streaming through the curl engine in `StreamResponse` mode with request cookies cleared | P0 | M4 | heric-http | `protocols.md` § Feature list (row 46, `curl.ts:137-377`) |
+| PRO-047 | SSE event storage as NDJSON in the response body plus the Events view, with plain-JSON content sniffing | P0 | M4 | heric-protocols | `protocols.md` § Feature list (row 47, `curl.ts:331-341,450-497`) |
+| PRO-048 | SSE disconnect and readyState handling from the URL bar | P0 | M4 | heric-protocols | `protocols.md` § Feature list (row 48, `curl.ts:415-440`; `request-url-bar.tsx:304-306`) |
+| PRO-049 | Sidebar live connection indicator (spinner to success dot) for streaming requests | P1 | M4 | apps/gui | `protocols.md` § Feature list (row 49, `request-node.tsx:96,192`) |
+| PRO-050 | Stream Summary tab: JSONPath extraction, provider-specific path inference, Markdown rendering, persisted choice | P1 | M4 | apps/gui | `protocols.md` § Feature list (row 50, `stream-summary.ts:16-207`; `realtime-response-pane.tsx:241-249,378`) |
+| PRO-051 | SSE auth (basic, OAuth2, bearer) and headers through the shared HTTP auth pipeline | P0 | M4 | heric-auth | `protocols.md` § Feature list (row 51, `curl.ts:184-195`) |
+| PRO-052 | Repeat-on-interval reconnect for event streams, cleared on unmount or close | P2 | M4 | apps/gui | `protocols.md` § Feature list (row 52, `request-url-bar.tsx:430-450`) |
+| PRO-053 | Error responses for curl-level SSE failures with redacted messages | P1 | M4 | heric-http | `protocols.md` § Feature list (row 53, `curl.ts:247,379`) |
+| PRO-054 | Socket.IO connect with headers, query, path, proxy and `wss:`-only certificates | P0 | M4 | heric-protocols | `protocols.md` § Feature list (row 54, `socket-io.ts:329-356`) |
+| PRO-055 | Socket.IO `singleToken` auth as the only supported auth shape | P1 | M4 | heric-auth | `protocols.md` § Feature list (row 55, `socket-io.ts:329-354`; `request-pane.tsx:309`) |
+| PRO-056 | Socket.IO emit with JSON or plaintext args, optional event name, silent raw-string fallback on bad JSON | P0 | M4 | heric-protocols | `protocols.md` § Feature list (row 56, `body-tab-pane.tsx:98-126`; `socket-io.ts:479-506`) |
+| PRO-057 | Socket.IO ack callbacks logged as incoming events | P1 | M4 | heric-protocols | `protocols.md` § Feature list (row 57, `socket-io.ts:479-506`) |
+| PRO-058 | Named listeners persisted on the request and toggled, with rename/remove forcing an off | P0 | M4 | heric-protocols | `protocols.md` § Feature list (row 58, `socket-io.ts:542-591`; `event-tab-pane.tsx:92-130`) |
+| PRO-059 | Socket.IO event log with an info hint when no listeners exist | P1 | M4 | heric-protocols | `protocols.md` § Feature list (row 59, `socket-io.ts:362-438`) |
+| PRO-060 | Handshake path setting, defaulting to `/socket.io` | P1 | M4 | heric-protocols | `protocols.md` § Feature list (row 60, `request-pane.tsx:135`; `socket-io.ts:329-354`) |
+| PRO-061 | Disconnect reason and `connect_error` surfaced as both an event and an error response | P1 | M4 | heric-protocols | `protocols.md` § Feature list (row 61, `socket-io.ts:407-436`) |
+| PRO-062 | Read-only request form while a Socket.IO connection is live | P2 | M4 | apps/gui | `protocols.md` § Feature list (row 62, `socket-io/request-pane.tsx` banner) |
+| PRO-063 | v5 export/import of Socket.IO listeners and payload bodies, including `isOpen` state | P1 | M2 | heric-storage | `protocols.md` § Feature list (row 63, `insomnia-v5.ts:1180-1198`; `import.ts:168-186`) |
+| PRO-064 | IPC bridge and channel allowlists for every protocol (preload plus main allowlist) | P0 | M4 | heric-protocols | `protocols.md` § Feature list (row 64, `entry.preload.ts:44-79,127-136`; `main/ipc/electron.ts:39-41,103-106`) |
+| PRO-065 | Sensitive-value redaction across realtime logs and timelines, with per-protocol registries | P1 | M4 | heric-protocols | `protocols.md` § Feature list (row 65, `sensitive-values-registry.ts`; `websocket.ts:90,484`) |
+| PRO-066 | Realtime response and timeline persistence with reverse-order history loading | P1 | M4 | heric-storage | `protocols.md` § Feature list (row 66, `websocket-response.ts`, `socket-io-response.ts`) |
+| PRO-067 | Debug-route request-type routing (gRPC, realtime, HTTP panes; GraphQL subscriptions as realtime) | P0 | M4 | apps/gui | `protocols.md` § Feature list (row 67, `...debug.tsx:425-430,505-519,571-575`) |
+| PRO-068 | v5 export/import of non-HTTP entities (WebSocket, Socket.IO, gRPC, payloads, proto files), with proto content left out | P1 | M2 | heric-storage | `protocols.md` § Feature list (row 68, `import.ts:168-186`; `insomnia-v5.ts:1063-1207`) |
+| PRO-069 | Protocol smoke coverage: GraphQL, gRPC (reflection, mTLS), WebSocket, Socket.IO, SSE | P1 | M4 | heric-core | `protocols.md` § Feature list (row 69, `insomnia-smoke-test/tests/smoke/*.test.ts`) |
+
+### UI
+
+| ID | Feature | Priority | Milestone | Crate | Source |
+|---|---|---|---|---|---|
+| UI-001 | Multi-method HTTP client: method selector, one-line URL bar keyed by environment and VCS version, send/cancel, send-after-delay and repeat-on-interval options | P0 | M1 | apps/gui | `ui.md` § Feature list (P0 items 1, `request-url-bar.tsx:260-298`) |
+| UI-002 | Params/Headers/Body/Auth/Scripts/Docs editor tabs with key-value and bulk modes and count/dot badges | P0 | M1 | apps/gui | `ui.md` § Feature list (P0 item 2, `request-pane.tsx:118-420`) |
+| UI-003 | Response viewers for JSON, HTML, CSV, image, PDF, multipart, audio and raw with preview modes and 5 MB/100 MB guards | P0 | M1 | apps/gui | `ui.md` § Feature list (P0 item 3, `response-viewer.tsx:186-392`; `constants.ts:83-84`) |
+| UI-004 | Environment system in the UI: collection base/sub, project/global, private, vault secrets, inheritance and active-environment switching | P0 | M3 | apps/gui | `ui.md` § Feature list (P0 item 4, `environment-picker.tsx`; `workspace-environments-edit-modal.tsx`) |
+| UI-005 | Persisted per-organization tabs with close/reopen/next/previous, one temporary tab, and tab cleanup driven by database deletes | P0 | M1 | apps/gui | `ui.md` § Feature list (P0 item 5, `insomnia-tab-context.tsx:141-617`; `tab-list.tsx:239-257`) |
+| UI-006 | Global command palette searching requests, API collections and environments | P0 | M7 | apps/gui | `ui.md` § Feature list (P0 item 6, `command-palette.tsx:51-57`) |
+| UI-007 | Global shortcut registry with per-platform defaults, rebinding UI and duplicate detection | P0 | M7 | apps/gui | `ui.md` § Feature list (P0 item 7, `hotkeys.ts:51-200`; `settings/shortcuts.tsx:30-151`) |
+| UI-008 | Environment precedence folder > collection > project stated in the picker tooltip and enforced when merging | P0 | M3 | apps/gui | `ui.md` § Environments UI (edge case, `environment-picker.tsx:32-40,207,303`) |
+| UI-009 | Resolve the shortcut collision: `sidebar_focusFilter` and `beautifyRequestBody` ship the same combination and the filter binding has no listener | P0 | M7 | apps/gui | `ui.md` § Keyboard shortcuts (edge case, `hotkeys.ts:124-127` vs `:172-175`) |
+| UI-010 | `workspace_showSettings` is displayed in settings but has no handler; either implement it or drop it from the registry | P0 | M7 | apps/gui | `ui.md` § Keyboard shortcuts (edge case, `hotkeys.ts:52-55`) |
+| UI-011 | Resizable request/response split with autosaved panel sizes and a vertical layout below 880 px | P1 | M7 | apps/gui | `ui.md` § Feature list (P1 item 1, `debug.tsx:454-493`) |
+| UI-012 | URL query-string import, path-parameter editing, and editor remount keyed on environment and VCS version | P1 | M1 | apps/gui | `ui.md` § Feature list (P1 item 2, `request-pane.tsx:58,82,103-116`) |
+| UI-013 | Response history grouped by age, with selection restoring the associated request version | P1 | M1 | apps/gui | `ui.md` § Feature list (P1 item 3, `response-history-dropdown.tsx:33-274`) |
+| UI-014 | Response filter persisted per request with a 10-entry filter history | P1 | M7 | apps/gui | `ui.md` § Feature list (P1 item 4, `response-pane.tsx:46-67`) |
+| UI-015 | HAR and HTTP debug export, plus prettified and raw response download | P1 | M6 | apps/gui | `ui.md` § Feature list (P1 item 5, `preview-mode-dropdown.tsx:26-70`; `response-pane-utils.ts:6-73`) |
+| UI-016 | Cookies and certificates modals opened from the workspace pane header with counts | P1 | M3 | apps/gui | `ui.md` § Feature list (P1 item 6, `workspace-pane-header.tsx:132-171`; `cookies-modal.tsx:62-126`) |
+| UI-017 | Theme selection with OS color-scheme auto-detect, separate light/dark choices and plugin theme previews | P1 | M7 | apps/gui | `ui.md` § Feature list (P1 item 7, `theme-panel.tsx:76-155`; `plugins/misc.ts:74-300`) |
+| UI-018 | Settings modal with general, proxy, data, themes, keyboard, plugins, credentials and scripting tabs | P1 | M7 | apps/gui | `ui.md` § Feature list (P1 item 8, `settings-modal.tsx:111-240`) |
+| UI-019 | CodeMirror editor state (undo, scroll, cursor, selection) cached per history key and restored on remount | P1 | M1 | apps/gui | `ui.md` § Feature list (P1 item 9, `editor-state-cache.ts:32-64`) |
+| UI-020 | Sidebar filtering (300 ms debounce), focus mode for one collection, pinned requests and drag-and-drop ordering | P1 | M1 | apps/gui | `ui.md` § Feature list (P1 item 10, `project-navigation-sidebar.tsx:112-159`; `use-sidebar-drag-and-drop.tsx`) |
+| UI-021 | Deep-link handling for imports, plugin installs, plugin themes and OAuth callbacks, with post-login replay | P1 | M2 | apps/gui | `ui.md` § Feature list (P1 item 11, `root.tsx:105,448-745`) |
+| UI-022 | GraphQL explorer pane with its own filter shortcut and navigation history | P2 | M4 | apps/gui | `ui.md` § Feature list (P2 item 1, `graph-ql-explorer.tsx:136-149`) |
+| UI-023 | MCP workspace pane with a per-workspace persisted list filter | P2 | M7 | apps/gui | `ui.md` § Feature list (P2 item 2, `mcp-pane.tsx:96`) |
+| UI-024 | Mock server panes and route editing | P2 | M7 | apps/gui | `ui.md` § Feature list (P2 item 3, `...mock-server.tsx`; `mock-url-bar.tsx:38-47`) |
+| UI-025 | Legacy unit-test pane and collection runner pane | P2 | M5 | apps/gui | `ui.md` § Feature list (P2 item 4, `...test.tsx:117-121`; `debug.runner.tsx:509-515`) |
+| UI-026 | Tutorial panel mode that hides the tab bar and pane header | P2 | M7 | apps/gui | `ui.md` § Feature list (P2 item 5, `debug.tsx:481-483`) |
+| UI-027 | Session-level "always show large responses" toggle | P2 | M7 | apps/gui | `ui.md` § Feature list (P2 item 6, `response-viewer.tsx:36,115`) |
+| UI-028 | Shortcut display components with platform glyphs and a "Not defined" fallback | P2 | M7 | apps/gui | `ui.md` § Feature list (P2 item 7, `hotkey.tsx:34-50`) |
+| UI-029 | Native context menus for tabs (close, close others, close all) and middle-click close | P2 | M7 | apps/gui | `ui.md` § Feature list (P2 item 8, `tab.tsx:104-120`) |
+
+### Platforms
+
+| ID | Feature | Priority | Milestone | Crate | Source |
+|---|---|---|---|---|---|
+| PLT-001 | User-data path relocation to `%APPDATA%\Insomnia`, `~/Library/Application Support/Insomnia` or `~/.config/Insomnia` before any consumer runs | P0 | M1 | heric-core | `platforms.md` § Feature list (row 1, `entry.main.ts:54-58`) |
+| PLT-002 | `INSOMNIA_DATA_PATH` override honored by every path consumer (database, responses, localStorage, plugins, git) | P0 | M1 | heric-core | `platforms.md` § Feature list (row 2, `database.main.ts:8`; `ipc/main.ts:194`; `plugins/index.ts:436`) |
+| PLT-003 | Inso CLI reproduces the same data directories per platform, including the Linux `.config` precedent | P1 | M6 | apps/cli | `platforms.md` § Feature list (row 3, `insomnia-inso/src/util.ts:9-24`) |
+| PLT-004 | Secret storage abstraction over the OS keystore with a plaintext fallback when encryption is unavailable | P0 | M3 | heric-core | `platforms.md` § Feature list (row 4, `ipc/secret-storage.ts:20-70`); `structure.md` § Process, storage and data model (Secret storage) |
+| PLT-005 | Opt-in vault key persistence (`vault_<accountId>`), bypassed by `INSOMNIA_VAULT_KEY` in tests | P1 | M3 | heric-core | `platforms.md` § Feature list (row 5, `common/utils/vault.ts:49-65`) |
+| PLT-006 | Git native credential provider delegating to `git credential fill` without storing secrets | P1 | M6 | heric-git | `platforms.md` § Feature list (row 6, `sync/git/providers/native.ts:62-150`) |
+| PLT-007 | Platform detection module (`platform`, `isMac`, `isWindows`, `isLinux`) shared by GUI, CLI, plugins and sandbox, defaulting to linux | P0 | M1 | heric-core | `platforms.md` § Feature list (row 7, `common-src/platform.ts:18-34`) |
+| PLT-008 | Native menus per OS: per-window menus on Windows/Linux, app menu on macOS, mnemonics, About/Check-for-updates placement, `F1` off macOS | P0 | M7 | apps/gui | `platforms.md` § Feature list (row 8, `window-utils.ts:320-799`) |
+| PLT-009 | Menu-bar auto-hide setting on Windows and Linux only, applied to all windows | P2 | M7 | apps/gui | `platforms.md` § Feature list (row 9, `use-settings-side-effects.ts:29`; `ipc/electron.ts:442-450`) |
+| PLT-010 | Per-platform keybinding registry and display formatting (`Ctrl`/`Win`/`Super`, macOS glyphs and ordering, join rules) | P0 | M7 | apps/gui | `platforms.md` § Feature list (row 10, `hotkeys.ts:51-344`) |
+| PLT-011 | `insomnia://` protocol client registration (dev scheme `insomnia-dev://`) with platform-specific argv handling | P0 | M2 | heric-core | `platforms.md` § Feature list (row 11, `entry.main.ts:172-213`) |
+| PLT-012 | Deep-link intake through `open-url`, single-instance `second-instance`, cold-start argv and macOS `open-file` folders | P0 | M2 | heric-core | `platforms.md` § Feature list (row 12, `entry.main.ts:263-327`) |
+| PLT-013 | Deep-link parsing with source precedence and post-login replay from sessionStorage | P1 | M2 | heric-core | `platforms.md` § Feature list (row 13, `import-deep-link.ts:6-100`; `root.tsx:760-769`) |
+| PLT-014 | macOS "Open With" folder support through `CFBundleDocumentTypes` and `open-file` | P2 | M7 | apps/gui | `platforms.md` § Feature list (row 14, `electron-builder.config.js:62-70`) |
+| PLT-015 | macOS window lifecycle: stay alive on window close, re-create the window on `activate` | P1 | M1 | apps/gui | `platforms.md` § Feature list (row 15, `entry.main.ts:221-237`) |
+| PLT-016 | Windows Squirrel shortcut lifecycle (`--squirrel-install` and related argv) before app ready | P1 | M7 | apps/gui | `platforms.md` § Feature list (row 16, `squirrel-startup.ts:15-49`) |
+| PLT-017 | Windows secure launcher hardening DLL search paths, with the updater `processStartAndWait` workaround kept in sync | P1 | M7 | apps/gui | `platforms.md` § Feature list (row 17, `cpp/insomnia.cpp:152-179`; `updates.ts:79-96`) |
+| PLT-018 | Update path selection: Squirrel `autoUpdater` versus NSIS `electron-updater`, detected via `installer-info.json`, differential download disabled | P1 | M7 | apps/gui | `platforms.md` § Feature list (row 18, `updates.ts:99-223`) |
+| PLT-019 | Update-unsupported states (Linux, portable Windows, admin-disabled, dev) with notification-only settings | P1 | M7 | apps/gui | `platforms.md` § Feature list (row 19, `updates.ts:18-42`; `constants.ts:59-69`) |
+| PLT-020 | Proxy scope and first-party bypass list applied to the Chromium session, falling back to system mode on a bad proxy URL | P0 | M3 | heric-http | `platforms.md` § Feature list (row 20, `main/proxy.ts:20-113`); `http.md` § Feature list (row 31) |
+| PLT-021 | System-proxy fallback for actual requests when the proxy setting is off, parsing the Chromium PAC result | P0 | M3 | heric-http | `platforms.md` § Feature list (row 21, `libcurl-promise.ts:421-450`); `http.md` § Feature list (row 29) |
+| PLT-022 | Git sync uses a direct session when a proxy is configured and scope is not `all` | P1 | M6 | heric-git | `platforms.md` § Feature list (row 22, `sync/git/http-client.ts:66-92`) |
+| PLT-023 | Plugin install through yarn honors proxy environment variables and an extra CA bundle for `.pem/.crt/.cer/.p12` | P2 | M7 | apps/gui | `platforms.md` § Feature list (row 23, `install-plugin.ts:434-491`) |
+| PLT-024 | OS native CA store for HTTP requests (`NativeCa`), overridden by a workspace CA | P0 | M3 | heric-http | `platforms.md` § Feature list (row 24, `libcurl-promise.ts:377-378`); `http.md` § Feature list (row 25) |
+| PLT-025 | Workspace CA and client certificates (PEM/P12, key, passphrase) restricted to configured data folders | P0 | M3 | heric-http | `platforms.md` § Feature list (row 25, `curl.ts:165-203`; `libcurl-promise.ts:374-407`) |
+| PLT-026 | WebSocket and Socket.IO trust Node's bundled roots instead of the OS store unless a workspace CA is set | P1 | M4 | heric-protocols | `platforms.md` § Feature list (row 26, `websocket.ts:211-215`; `socket-io.ts:190-195`) |
+| PLT-027 | SSL verification toggle disabling host and peer checks | P1 | M3 | heric-http | `platforms.md` § Feature list (row 27, `libcurl-promise.ts:459-465`) |
+| PLT-028 | OAuth popup TLS (`BLIND_TRUST`) and proxy overrides applied to its own session | P1 | M3 | heric-auth | `platforms.md` § Feature list (row 28, `authorize-user-in-window.ts:130-149`) |
+| PLT-029 | Analytics OS naming (`darwin` to `mac`, `win32` to `windows`) | P2 | M7 | heric-core | `platforms.md` § Feature list (row 29, `insomnia-analytics/src/analytics.ts:30-42`) |
+| PLT-030 | Platform value exposed to plugins and scripts through preload and the sandbox stub | P1 | M5 | heric-core | `platforms.md` § Feature list (row 30, `entry.preload.ts:437-441`; `sandbox-globals.ts:143-149`) |
+| PLT-031 | Windows escaping of `{% file '...' %}` tags inside environment JSON so backslashes survive round-trips | P2 | M3 | apps/gui | `platforms.md` § Feature list (row 31, `environment-editor.tsx:46-47,91-92,127-138`) |
+| PLT-032 | Plugin search-path `~` expansion and path-list splitting that tolerates Windows drive letters | P2 | M7 | apps/gui | `platforms.md` § Feature list (row 32, `plugins/index.ts:423-433`) |
+| PLT-033 | Packaging targets and installer metadata per OS (NSIS plus Squirrel, AppImage/deb/rpm/snap/tar.gz, universal dmg plus zip) | P1 | M7 | apps/gui | `platforms.md` § Feature list (row 33, `electron-builder.config.js:39-197`) |
+| PLT-034 | macOS hardened runtime, entitlements and notarization | P1 | M7 | apps/gui | `platforms.md` § Feature list (row 34, `electron-builder.config.js:40-72`; `.github/workflows/release-build.yml:111-137`) |
+| PLT-035 | Windows code signing through the DigiCert hook, no-op without its environment variables | P1 | M7 | apps/gui | `platforms.md` § Feature list (row 35, `customSign.js:16-43`) |
+| PLT-036 | CI build matrix with per-architecture artifacts, including the disabled Linux ARM64 entry | P2 | M7 | apps/gui | `platforms.md` § Feature list (row 36, `.github/workflows/release-build.yml:53-110`) |
+| PLT-037 | Inso binary packaging per OS (`pkg` host target, zip on Windows, tar.xz on Linux, signed pkg on macOS) | P2 | M7 | apps/cli | `platforms.md` § Feature list (row 37, `insomnia-inso/package.json:43`; `scripts/artifacts.ts:10-33`) |
+| PLT-038 | Child processes hidden on Windows (`windowsHide`) with no effect elsewhere | P2 | M7 | apps/gui | `platforms.md` § Feature list (row 38, `updates.ts:89`; `providers/native.ts:93`) |
+
+### Import, export, design, Git and CLI
+
+| ID | Feature | Priority | Milestone | Crate | Source |
+|---|---|---|---|---|---|
+| IO-001 | Project export folder: one v5 YAML file per workspace, named `insomnia-export.<project>.<ms>`, with a private-environment prompt | P0 | M2 | apps/gui | `io-and-cli.md` § Feature list (row 3, `import-export.tsx:187-206`) |
+| IO-002 | Export of selected requests via `requestIds`, keeping every request group | P1 | M2 | heric-storage | `io-and-cli.md` § Feature list (row 4, `insomnia-v5.ts:1103-1111`; `import-export.tsx:336-346`) |
+| IO-003 | HAR 1.2 export for a workspace, selected requests or the current request, tab-indented, with masked auth and injected `Content-Length` | P0 | M6 | heric-import | `io-and-cli.md` § Feature list (row 5, `har.ts:32,39,103`); `fixtures.md` § Feature list (HAR export with confidentiality masking) |
+| IO-004 | HAR import from `log.entries` or a bare request root, comments as names, requests only | P0 | M5 | heric-import | `io-and-cli.md` § Feature list (row 6, `importers/har.ts:99`) |
+| IO-005 | cURL import from text, clipboard paste and the global paste hook, with flag whitelist and value-arg handling | P0 | M5 | heric-import | `io-and-cli.md` § Feature list (row 7, `importers/curl.ts:468`; `use-global-curl-paste-import.ts:41`) |
+| IO-006 | Postman v2.0 and v2.1 collection import: faker/Nunjucks rewrite, description objects, seven auth types, top-level folder as workspace | P0 | M5 | heric-import | `io-and-cli.md` § Feature list (row 8, `importers/postman.ts:964`) |
+| IO-007 | Postman environment import: enabled variables only, one environment-scope workspace per environment | P1 | M5 | heric-import | `io-and-cli.md` § Feature list (row 9, `importers/postman-env.ts:26`) |
+| IO-008 | OpenAPI 3 import into a collection: server variables, tags to folders, `{{ _.base_url }}` URLs, security schemes to environment variables | P0 | M5 | heric-openapi | `io-and-cli.md` § Feature list (row 10, `importers/openapi-3.ts:801`) |
+| IO-009 | Swagger 2.0 import with OAuth2 flow mapping and urlencoded/multipart bodies | P0 | M5 | heric-openapi | `io-and-cli.md` § Feature list (row 11, `importers/swagger-2.ts:495`) |
+| IO-010 | WSDL import through the patched `apiconnect-wsdl` and the Postman importer, file-path only | P1 | M5 | heric-openapi | `io-and-cli.md` § Feature list (row 12, `importers/wsdl.ts:102`) |
+| IO-011 | Legacy Insomnia v4 import (YAML or JSON, strict `__export_format === 4`) | P1 | M5 | heric-import | `io-and-cli.md` § Feature list (row 13, `importers/insomnia-4.ts:17`) |
+| IO-012 | Legacy Insomnia v1-v3 import with strict format equality and the v2 string-body upgrade | P2 | M5 | heric-import | `io-and-cli.md` § Feature list (row 13, `importers/insomnia-{1,2,3}.ts:136/:13/:12`) |
+| IO-013 | Postman data-dump `.zip` import through archive extraction | P1 | M5 | heric-import | `io-and-cli.md` § Feature list (row 14, `import.ts:109`; `import.scan.tsx:16`) |
+| IO-014 | Import into an existing workspace: duplicate detection by design title/version and by MCP URL | P1 | M5 | heric-import | `io-and-cli.md` § Feature list (row 16, `import.ts:783,861`; `import.resources.tsx:52`) |
+| IO-015 | Git-safe filename sanitization for imported titles (`/`, `\`, `..`, NUL, blank) | P1 | M6 | heric-import | `io-and-cli.md` § Feature list (row 17, `import.ts:716-719`) |
+| IO-016 | Code snippet generation modal with the httpsnippet target/client list and persisted selection | P0 | M6 | heric-codegen | `io-and-cli.md` § Feature list (row 18, `generate-code-modal.tsx:52-110`) |
+| IO-017 | HAR-to-snippet IPC preserving the confidentiality mask through URL encoding, with a random per-process placeholder | P0 | M6 | heric-codegen | `io-and-cli.md` § Feature list (row 19, `ipc/main.ts:573-582`; `confidential-mask.ts:53`) |
+| IO-018 | Git clone or init into a managed or user-chosen folder: shallow clone in an in-memory DB, schema validation before touching the real DB | P0 | M6 | heric-git | `io-and-cli.md` § Feature list (row 20, `git-service.ts:1352,1445,1923`) |
+| IO-019 | Git commit, push and pull with a conflict flow, uncommitted-changes guard, 401/403 mapped to auth errors and blocked symlink writes | P0 | M6 | heric-git | `io-and-cli.md` § Feature list (row 21, `git-service.ts:2378,2496,3133`; `git-vcs.ts:1291,1933`) |
+| IO-020 | Branch create, checkout and delete | P0 | M6 | heric-git | `io-and-cli.md` § Feature list (row 22, `git-service.ts:2645,2728,2923`) |
+| IO-021 | Canonical YAML replay and undiscardable-change detection to avoid phantom diffs after clone | P0 | M6 | heric-git | `io-and-cli.md` § Feature list (row 24, `canonical-file.ts:24,70,88,128`) |
+| IO-022 | NeDB-backed VCS filesystem with write guards: `.insomnia` only, conflict-marker skip, id/type check, `canSync` allow-list | P0 | M6 | heric-git | `io-and-cli.md` § Feature list (row 25, `ne-db-client.ts:116-152`) |
+| IO-023 | Path containment and blocked-write reporting against symlink escapes, `.git` writes and traversal segments | P0 | M6 | heric-git | `io-and-cli.md` § Feature list (row 26, `fs-client.ts:51-170`) |
+| IO-024 | Git credential providers: GitHub and GitLab OAuth, custom token, native OS credential helper | P1 | M6 | heric-git | `io-and-cli.md` § Feature list (row 29, `providers/{github,gitlab,custom,native}.ts`); `platforms.md` § Feature list (row 6) |
+| IO-025 | Git diff view, visual merge resolution and partial staging with debug-only unknown-field ranges | P1 | M6 | apps/gui | `io-and-cli.md` § Feature list (row 30, `git-service.ts:3580,3445`; `diff-view-editor.tsx`) |
+| IO-026 | Repository relocation, open-folder adoption and the project-wide migration runner | P1 | M6 | heric-git | `io-and-cli.md` § Feature list (row 31, `git-service.ts:2084,1923,4003`) |
+| IO-027 | AI commit-message generation and commit splitting through a `utilityProcess` and a configured AI plugin | P2 | M7 | heric-git | `io-and-cli.md` § Feature list (row 32, `ipc/main.ts:814`; `git-commit-generation-process.mjs`) |
+| IO-028 | Design spec editor with 500 ms debounced autosave and lint wired into CodeMirror | P0 | M6 | apps/gui | `io-and-cli.md` § Feature list (row 33, `spec-view.tsx:228-317`) |
+| IO-029 | Spectral lint in a single reusable utility process with a 30 s cap and cancelled/error/timeout states | P0 | M6 | heric-openapi | `io-and-cli.md` § Feature list (row 34, `ipc/main.ts:505-570`; `lint-process.mjs`) |
+| IO-030 | Custom ruleset validation, bundling and SSRF guard: `rules`/`extends` only, prototype keys rejected, https-only docs, private-host DNS re-check | P0 | M6 | heric-openapi | `io-and-cli.md` § Feature list (row 35, `spectral-ruleset-validator.ts:141`; `bundle-spectral-ruleset.ts:278,294`) |
+| IO-031 | Ruleset CRUD (upload, refresh, delete) with per-project `.spectral.yaml` and the repo file for Git projects | P1 | M6 | heric-openapi | `io-and-cli.md` § Feature list (row 36, `...{update,refresh,delete}-ruleset.tsx`) |
+| IO-032 | Generate a request collection from the design spec through resource scanning and workspace import | P1 | M6 | heric-openapi | `io-and-cli.md` § Feature list (row 37, `spec.generate-request-collection.tsx:12-62`) |
+| IO-033 | Design empty-state templates (Petstore, Todo, blank) | P2 | M6 | apps/gui | `io-and-cli.md` § Feature list (row 38, `design-empty-state.tsx:10`; `example-openapi-specs.ts:1,778,920`) |
+| IO-034 | `inso run test`: suite/spec/workspace identifier, environment, name pattern, reporter, bail, keep file, timeout, cert and proxy options | P0 | M6 | apps/cli | `io-and-cli.md` § Feature list (row 39, `cli.ts:354-493`) |
+| IO-035 | `inso run collection`: request filters, repeatable items, environments, globals, iterations and data, delay, overrides, output report and risk gate | P0 | M6 | apps/cli | `io-and-cli.md` § Feature list (row 40, `cli.ts:494-890`) |
+| IO-036 | `inso lint spec` for files or database specs, sibling `.spectral*` auto-detection, exit 1 only on Error severity | P0 | M6 | apps/cli | `io-and-cli.md` § Feature list (row 41, `cli.ts:892-958`; `lint-specification.ts:83-143`) |
+| IO-037 | `inso export spec` to stdout or file with `--skipAnnotations` removing `x-kong-*` recursively | P1 | M6 | apps/cli | `io-and-cli.md` § Feature list (row 42, `cli.ts:960-1004`; `export-specification.ts:19-41`) |
+| IO-038 | `inso` data-source resolution: v4/v5 export file, Git `.insomnia` tree, then NeDB directory, with adapter guards | P0 | M6 | apps/cli | `io-and-cli.md` § Feature list (row 43, `db/index.ts:22-68`) |
+| IO-039 | `.insorc` discovery honoring only `workingDir`, `ci`, `verbose`, `printOptions`, plus the `script` subcommand passthrough | P2 | M6 | apps/cli | `io-and-cli.md` § Feature list (row 44, `cli.ts:73-93,1008-1034`) |
+| IO-040 | Iteration data from JSON or CSV, including quoted separators, CRLF, short rows and `--env-var` overrides | P1 | M6 | apps/cli | `io-and-cli.md` § Feature list (row 45, `cli.ts:207-246`) |
+| IO-041 | CLI output redaction modes (`redact`, `plaintext`) for headers, auth fields outside the whitelist, and environments | P1 | M6 | apps/cli | `io-and-cli.md` § Feature list (row 46, `result-report.ts:38-230`) |
+| IO-042 | Hidden `generate-docs` command used for internal documentation generation | P2 | M7 | apps/cli | `io-and-cli.md` § Feature list (row 50, `cli.ts:1041-1044`) |
+
+### Fixtures and golden tests
+
+| ID | Feature | Priority | Milestone | Crate | Source |
+|---|---|---|---|---|---|
+| FIX-001 | Importer golden corpus: all 75 `*-input.*` fixtures plus the 75 snapshot entries exported as JSON resource lists, with a fixed clock and unique-id assertion | P0 | M5 | heric-import | `fixtures.md` § Recommended golden test set (`crates/heric-import`) |
+| FIX-002 | v5 round-trip fixture set (14 airline-demo YAML files) asserting import-export-import fixed point after masking ids and timestamps | P0 | M2 | heric-storage | `fixtures.md` § Recommended golden test set (`crates/heric-import`) |
+| FIX-003 | cURL parser table test from the 46 inline cases, including non-cURL returning none and explicit `Authorization` beating `-u` | P0 | M5 | heric-import | `fixtures.md` § Recommended golden test set (`crates/heric-import`) |
+| FIX-004 | Postman mapping expectations (auth, path params, base environment merge, description forms) with the collection-variable fixtures | P0 | M5 | heric-import | `fixtures.md` § Recommended golden test set (`crates/heric-import`) |
+| FIX-005 | OpenAPI 3 and Swagger 2.0 fixture trees plus the query-flattening and `allOf`/`oneOf`/`anyOf` composition golden | P0 | M5 | heric-openapi | `fixtures.md` § Recommended golden test set (`crates/heric-openapi`) |
+| FIX-006 | The 62 v5 parser expectations re-encoded as model validation tests (defaults, discriminated unions, mock and MCP variants) | P0 | M1 | heric-model | `fixtures.md` § Recommended golden test set (`crates/heric-model` and `crates/heric-storage`) |
+| FIX-007 | `schemas/insomnia.schema.5.1.json` used as the external serializer contract, with the drift check preserved | P0 | M2 | heric-storage | `fixtures.md` § Recommended golden test set (`crates/heric-model` and `crates/heric-storage`) |
+| FIX-008 | NeDB reader corpus: 13 inso datafiles plus the 29-file legacy installation snapshot, and the Git fixture repos | P0 | M2 | heric-storage | `fixtures.md` § Recommended golden test set (`crates/heric-model` and `crates/heric-storage`) |
+| FIX-009 | Built-in template tag golden values (base64, hash digests, now, uuid, jsonpath precision, XPath, response redaction, file isolation) | P0 | M3 | heric-template | `fixtures.md` § Recommended golden test set (`crates/heric-template`) |
+| FIX-010 | LiquidJS conformance suite: all 99 cases, keeping the Nunjucks-breaking-change and security groups as separate test names | P0 | M1 | heric-template | `fixtures.md` § Recommended golden test set (`crates/heric-template`) |
+| FIX-011 | Render-context, confidentiality-masking and rendered-request expectations from `render.test.ts`, including gRPC variants | P0 | M1 | heric-template | `fixtures.md` § Recommended golden test set (`crates/heric-template`) |
+| FIX-012 | HTTP pipeline table test from `network.test.ts` (headers, multipart, unix socket, netrc, SSL, HTTP version, cookie parsing, inheritance, no re-render of response tags) | P0 | M1 | heric-http | `fixtures.md` § Recommended golden test set (`crates/heric-http`) |
+| FIX-013 | Auth golden tests: OAuth1 signatures, bearer prefixes, API-key placement, and the Postman auth cases | P0 | M3 | heric-auth | `fixtures.md` § Recommended golden test set (`crates/heric-auth`) |
+| FIX-014 | HAR export golden objects with confidential masking by purpose (preview versus explicit export) | P0 | M6 | heric-import | `fixtures.md` § Recommended golden test set (`crates/heric-import`, HAR export); `fixtures.md` § Feature list (HAR export with confidentiality masking) |
+| FIX-015 | Canonical Git YAML suite: replay stability, drift detection, `confidentialKeys` survival, plus a bare repository fixture | P1 | M6 | heric-git | `fixtures.md` § Recommended golden test set (`crates/heric-git`) |
+| FIX-016 | Proto fixture tree (including well-known-type imports) and the proto-write and gRPC-URL table tests | P1 | M4 | heric-protocols | `fixtures.md` § Recommended golden test set (`crates/heric-protocols`) |
+| FIX-017 | Protocol fixture collections for gRPC, gRPC mTLS, reflection API, WebSocket, Socket.IO and GraphQL handler and payload shapes | P1 | M4 | heric-protocols | `fixtures.md` § Recommended golden test set (`crates/heric-protocols`) |
+| FIX-018 | CLI report fixtures, `.insorc` variants and reporter/help snapshots, with volatile fields masked | P1 | M6 | apps/cli | `fixtures.md` § Recommended golden test set (`apps/cli`) |
+| FIX-019 | Test-suite code generation input/output fixture pairs if Heric generates Mocha suites | P1 | M5 | heric-script | `fixtures.md` § Recommended golden test set (`apps/cli`) |
+| FIX-020 | Sandbox module-surface snapshot and capability-gating assertions for the plugin tag sandbox | P1 | M7 | heric-template | `fixtures.md` § Feature list (Sandbox module surface and capability gating) |
+| FIX-021 | TLS trust fixtures: CA-signed versus self-signed localhost certificate pairs | P1 | M4 | heric-core | `fixtures.md` § Feature list (TLS trust model) |
+| FIX-022 | Store golden expectations as plain JSON rather than Vitest snapshot text, since snapshot formatting is regenerated | P1 | M5 | heric-core | `fixtures.md` § Gaps (Snapshot coupling) |
+| FIX-023 | Codegen goldens: no per-target reference exists, so generate snippets from the original for every target/client and check them in | P1 | M6 | heric-codegen | `fixtures.md` § Recommended golden test set (`crates/heric-codegen`); `fixtures.md` § Gaps (Codegen) |
+| FIX-024 | JSON and EDN prettifier fixture pairs | P2 | M7 | apps/gui | `fixtures.md` § Feature list (JSON and EDN prettification) |
+| FIX-025 | Unknown-field line-range diagnostics fixture and performance budget | P2 | M6 | heric-openapi | `fixtures.md` § Feature list (Unknown-field line-range reporting) |
+| FIX-026 | Postman data-dump zip extraction fixture | P2 | M5 | heric-import | `fixtures.md` § Feature list (Postman data-dump zip extraction) |
+| FIX-027 | Triage of unreferenced fixtures (duplicate prettify set, `nestedfolders.ts`, plugin import sample, unused YAML collections) as candidate inputs only | P2 | M5 | heric-core | `fixtures.md` § Gaps (Unreferenced fixtures) |
+
+## Cross-cutting risks
+
+### NeDB has no schema version and all migrations are read-time
+
+The document store carries no format version and `initModel` transforms every document on each `find`/`findOne`, writing back only when the caller saves, so a Rust reader that does not reproduce the per-type migrations observes different data than Insomnia for the same file. The same applies to the on-disk key set: any key outside the model defaults and `optionalKeys` is pruned in memory on every read. Sources: `storage.md` § Migrations; `storage.md` § Import/migration risks for a Rust reader (Migrations are read-time and in-memory, Silent field pruning); `models.md` § Core model + persistence (`init-model/index.ts:11-81`).
+
+Only the YAML export format is versioned (`schema_version` 5.0/5.1, with a missing value treated as 5.0), and 5.1 normalization rewrites header/parameter and script shapes and sorts property order, so writing YAML without the same normalization produces diffs and may fail re-import validation. Sources: `storage.md` § Migrations (5.0 to 5.1); `io-and-cli.md` § Export formats and versions; `fixtures.md` § Feature list (v5 read).
+
+### Silent key pruning loses fields written by a newer version
+
+Because pruning happens on read and is not persisted, a document written back through a stale model definition silently drops fields a newer Insomnia added, and every read of a model without `isPrivate` in its defaults returns `undefined` even when the row on disk has the flag. Heric must decide per model whether to mirror the pruning or preserve unknown keys, and must never round-trip a pruned document into Git or export. Sources: `storage.md` § Import/migration risks (Silent field pruning); `models.md` § Behaviors and edge cases (item 5, `isPrivate` pruning).
+
+### Model identity rules are load-bearing for sync and duplicate
+
+Base environments and cookie jars use deterministic ids derived from `sha1(parentId)`, Git repository ids are double-encoded as `gr_*`, and scratchpad sentinels are referenced from settings, so generating different ids creates duplicates on the next sync. Duplication rewrites references by serializing fields to JSON and doing string substitution, which will also rewrite ids inside template tags, scripts and URLs. Sources: `storage.md` § Feature list (Deterministic and special ids); `models.md` § Behaviors and edge cases (items 6, 9, 10).
+
+### Three scripting backends, three timeouts, and a fourth sandbox in templating
+
+The default script path runs in a hidden `BrowserWindow` with a renderer-side race at `timeout || 30_000` and a main-side race at `timeout || 5000`, the legacy Node executor has its own semantics and a known globals-mapping defect, and QuickJS is disabled but would add 30 s, 32 MB and a 256 KB stack. Template plugin tags run in a separate QuickJS sandbox with a 10 s timeout and 32 MB heap, so a single request can be bounded by four unrelated limits. Sources: `scripting.md` § Three execution backends, § Timeouts (three different defaults); `templating.md` § Feature list (row 33); `structure.md` § Templating and scripting (Script execution window, JS sandbox and security policy).
+
+### Confidentiality is a policy, not a flag, and every surface implements its own part
+
+Masking is decided per render purpose (reveal for send and scripts, conditional for preview, fail-closed when the purpose is undefined) and the mask is applied at merge time; the renderer, the templating worker and the HTTP pipeline each re-implement part of that contract. Downstream surfaces then redact independently: the HTTP timeline and response URL, realtime event logs, HAR export and codegen (with a random placeholder so masks survive URL encoding), and CLI reports. A single surface that forgets one of these leaks secrets into logs, exports or generated code. Sources: `templating.md` § Feature list (rows 15, 21, 25); `http.md` § Feature list (rows 48, 32); `protocols.md` § Feature list (row 65); `io-and-cli.md` § HAR export, § Code snippet generation; `fixtures.md` § Feature list (HAR export with confidentiality masking).
+
+### TLS and proxy behavior differ by transport
+
+HTTP(S) requests use libcurl with the OS native CA store and an independently resolved system proxy, while WebSocket and Socket.IO use Node's bundled roots and only take a proxy agent when the setting is on, and gRPC has no OS-store fallback at all. The Chromium session proxy (used by analytics, git and OAuth fetches) is configured separately from the per-request proxy, so "the proxy works" is true per transport, not globally. Sources: `platforms.md` § TLS certificates, § Proxy, § Per-platform matrix; `http.md` § Feature list (rows 25, 29, 31); `protocols.md` § Feature list (rows 35, 54).
+
+### Git state has two layouts, a version stamp, and metadata-driven file names
+
+Repositories exist in a legacy `.insomnia/<Type>/<id>.yml` layout and a newer root-level `insomnia.*.yaml` plus `.git/` layout, selected by `repoMigrationVersion` (which may be absent, 0 or 1, with an on-disk override). The authoritative file name for a workspace is `WorkspaceMeta.gitFilePath`, and imports produce sanitized `<name>-<id>.yaml`, so a reader that assumes `insomnia.<id>.yaml` will mis-match renames and deletions. Sources: `storage.md` § Import/migration risks (Two git layouts coexist, Workspace file naming is metadata-driven); `io-and-cli.md` § Git sync (On-disk model); `platforms.md` § Feature list (rows 1, 2).
+
+### Priority disagreements resolved by taking the higher value
+
+The reports mark priorities in two styles and occasionally disagree; in every case below the matrix takes the higher one and cites both. Secret storage is P0 in `platforms.md` row 4 but P1 in `structure.md` and P2 in `storage.md` (STO-017, PLT-004). Git repo structure migration, legacy `.insomnia` import and the bidirectional watcher are P0 in `storage.md`/`io-and-cli.md` row 23 but P1 in the other report of the pair (STO-011..013). Change buffering is P0 in `models.md` but P1 in `storage.md` (STO-005). The watcher conflict and the secret-storage conflict are visible in the rows themselves; the remainder of this list records the pairs resolved without a dedicated row note:
+
+- Importers: `structure.md` § Import, export, design and codegen says P1, while `io-and-cli.md` § Feature list marks the v5/postman/cURL/OpenAPI3/HAR/Swagger2 set P0 (IO-003..IO-009) and legacy v1-v3 P2 (IO-012).
+- Design mode: `structure.md` marks it P2, `io-and-cli.md` rows 33-35 mark the spec editor, Spectral lint and ruleset guards P0 (IO-028..IO-030).
+- Codegen: `structure.md` marks it P2, `io-and-cli.md` rows 18-19 mark the snippet modal and mask-preserving IPC P0 (IO-016, IO-017).
+- Auth/cookies/certs/proxy: `structure.md` § Request execution marks them P1, while `http.md` § Feature list marks the same capabilities P0 (HTTP-020..HTTP-041).
+- Response timeline: `structure.md` § Request execution (Request timeline) says P1, `http.md` row 51 marks the Console timeline P0 (HTTP-052).
+- Cookie jar: `structure.md` marks the cookie jar P1, `models.md` § Cookie jar and `http.md` rows 19-21 mark it P0 (MOD-041..MOD-044, HTTP-020..HTTP-022).
+- WebSocket and Socket.IO models: `models.md` § gRPC / WebSocket / Socket.IO / MCP marks them P1, `structure.md` § Protocols marks them P2 (MOD-045..MOD-048).
+- Git repo migration: `storage.md` says P0, `io-and-cli.md` rows 27-28 say P1 (STO-011, STO-012).
+- Response blob storage: `models.md` § HTTP request / response marks response creation P0, `storage.md` marks blob storage P1 (kept P1 in STO-015 with the models citation dropped to avoid a false merge).
+- Backups: `storage.md` says P1, `structure.md` § Platform and operations says P2 (STO-014).
+- Scripts sandbox policy: `structure.md` says "P1 (P0 if scripts are in M5 scope)"; since scripting lands in M5, the sandbox rules are treated at the level the scripting report itself assigns (SCR-012..SCR-015 P1).
+- Socket.IO: M4 does not name Socket.IO, but `protocols.md` § Socket.IO treats it as a protocol peer of GraphQL/gRPC/WebSocket/SSE, so its rows are scheduled in M4 (PRO-054..PRO-063).
+
+### Startup ordering and repair races
+
+`repairDatabase` runs right after datafile construction without awaiting the load, so repairs can execute against pending state on a slow or corrupt datafile, and restores copy `*.db` files without awaiting before relaunch. A Rust implementation needs explicit phase ordering (load, repair, backup) rather than inheriting these races. Sources: `storage.md` § Import/migration risks (Repair races autoload, Backups are narrow and racy); `storage.md` § Feature list (Backup and restore).
+
+### Path containment guards are the security boundary for files and Git writes
+
+The same containment helpers gate template `{% file %}` reads (reserved `insomnia.*.db` refusal, symlink and hard-link identity checks), multipart part reads against `dataFolders`, and Git `writeFile` against `.insomnia`-only writes and symlink escapes. Divergent implementations across crates would either block legitimate reads or reopen the traversal holes the guards exist to close. Sources: `storage.md` § Feature list (Datafile read protection); `templating.md` § Feature list (row 20); `http.md` § Feature list (row 5); `io-and-cli.md` § Filesystem/DB bridge (Path containment); `platforms.md` § Paths.
+
+## Out of scope
+
+- **Cloud sync** (`src/main/cloud-sync`, backend project init, pull, conflict prompts) - local-first rewrite; keep interfaces as stubs (`structure.md` § How Heric should mirror this; `docs-structure.md` § sections listing cloud sync as a non-goal; `io-and-cli.md` § Cloud VCS).
+- **Kong account login and account surfaces** (`src/common/account`, `src/ui/account`, organization/user billing headers in the UI) - out of scope per plan (`structure.md` § How Heric should mirror this; `ui.md` § Information architecture, billing surfaces).
+- **Telemetry and analytics** (Segment events, stats reporting, `Stats` counters kept only as local fields) - out of scope; a no-op telemetry trait if needed (`structure.md` § Feature list, Analytics; `storage.md` § Feature list, Version telemetry).
+- **Insomnia Sync branches/snapshots and cloud project types** - documented as out of scope in the docs inventory (`docs-structure.md` § sections on Insomnia Sync and cloud projects).
+- **Cloud VCS merge, crypto and delta code** (`packages/insomnia-vcs` three-way merge, RSA/AES crypto, delta diff/patch) - not implemented; the algorithms remain reference material (`io-and-cli.md` § Feature list rows 47-49, marked "out of scope; local-first").
+- **RBAC/SSO/SCIM enterprise controls** - cloud-admin features excluded with cloud sync (`docs-structure.md`).
+- **Konnect organization migration and route sanitization** - cloud control-plane features kept only as data-compatibility code paths (`storage.md` § Feature list, Organization migrations; `templating.md` § Feature list, row 37).
+- **MCP client workspaces and the AI settings/commit-message surfaces** that depend on bundled AI plugins - `structure.md` marks MCP P2 and AI commit generation P2, and both require cloud/AI services; Heric keeps the model shapes for data compatibility but no live MCP transport (STR/MOD rows; `io-and-cli.md` row 32).
+
+Items above are marked out of scope by the reports themselves; the matrix rows they would correspond to are either absent or carry the out-of-scope note, and the stub-interface requirement from `PROMPT-HERIC.md` applies.
