@@ -97,7 +97,7 @@ jobs:
           echo "cargo-packager configuration lands with the M1 release; see docs/adr/0001-packaging.md."
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: artifacts-${{ matrix.target }}
           path: |
