@@ -155,8 +155,12 @@ jobs:
       - name: Check links
         uses: lycheeverse/lychee-action@v2
         with:
+          # mdBook writes a 404.html per book whose only link is the absolute
+          # path of the deployed site (/Heric/<lang>/), which cannot be
+          # resolved offline. Every other page is checked.
           args: >-
             --no-progress --offline --include-fragments
+            --exclude-path 404.html
             "$GITHUB_WORKSPACE/site"
           fail: true
 
