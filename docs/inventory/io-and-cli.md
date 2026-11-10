@@ -22,7 +22,7 @@ simultaneously.
 | Import entry points | `importInsomniaV5Data(rawData)` / `tryImportV5Data(rawData)` | `src/common/insomnia-v5.ts:1006`, `:990` |
 | Parse pipeline | `importData()` → `migrateToLatestYaml` → `InsomniaFileSchema` | `src/common/insomnia-v5.ts:937`, import `:44`; migration `src/common/insomnia-schema-migrations/index.ts:60` |
 | Empty-value stripping | `removeEmptyFields()` before `yaml.stringify` | `src/common/insomnia-v5.ts:365`, used `:1030`, `:1461`, `:1494`, `:1509`, `:1532`, `:1551` |
-| Validate before write | `InsomniaFileSchema.parse(...)` on every branch | e.g. `src/common/insomnia-v5.ts:1440`, `:1492`, `:1528` |
+| Validate before write | `InsomniaFileSchema.parse(...)` on every branch | e.g. `src/common/insomnia-v5.ts:1459`, `:1492`, `:1528` |
 
 One file is emitted **per workspace**. The top-level `type` is chosen by workspace scope
 (`src/common/insomnia-v5.ts:1423-1552`):
@@ -46,13 +46,13 @@ Envelope and field rules:
   `isPrivate` (`src/ui/components/settings/import-export.tsx:158-164`, dialog `:77-91`).
 - Secrets are never serialized into exports or Git; only their **names** are kept as
   `confidentialKeys` when the environment is KV-pair type (`src/common/insomnia-v5.ts:309-337`,
-  `getConfidentialKeys()` `:315-327`). Import rebuilds secret flags from those names (`:337`).
+  `getConfidentialKeys()` `:315-327`). Import rebuilds secret flags from those names (`:339`).
 - `requestIds` restricts export to selected requests while keeping every request group
   (`src/common/insomnia-v5.ts:1103-1111`); used by "Export selected requests"
-  (`src/ui/components/settings/import-export.tsx:336-346`, invoked from
+  (`src/ui/components/settings/import-export.tsx:301-346`, invoked from
   `src/ui/components/modals/export-requests-modal.tsx:369`).
 - Key order in the emitted YAML is deliberately stable so Git diffs stay small
-  (comments `src/common/insomnia-v5.ts:81`, `:327`). MCP URLs get a dedicated builder
+  (comments `src/common/insomnia-v5.ts:158`, `:312-313`). MCP URLs get a dedicated builder
   `mcpUrlToInsomniaV5Yaml()` (`:1015`).
 - No file-level `id` / `created` / `modified`; entity ids live inside each section and
   the importer regenerates them when writing into a new workspace.
@@ -123,7 +123,7 @@ wins; `acceptFilePath === true` receives the full `ImportEntry` instead of `cont
 (`:35-37`); `convertErrorMessage` results are collected and the next importer is tried
 (`:43-51`); results pass `setDefaults()` then `dotInKeyNameInvariant()`, which rejects any
 key containing `.` before NeDB sees it (`:49`, definition `:72-89`). If nothing matches,
-the thrown error is the joined importer messages or `'No importers found for file'` (`:69`).
+the thrown error is the joined importer messages or `'No importers found for file'` (`:68`).
 
 Order (`src/main/importers/importers/index.ts:15-27`): insomnia1 → insomnia2 → insomnia3
 → insomnia4 → postman → postman-environment → har → curl → swagger2 → openapi3 → wsdl.
@@ -138,18 +138,18 @@ Electron `getPathForFile` at `:93`, `:136`), paste-anywhere cURL hook
 
 | Format | Entry point | Supported versions | Quirks |
 |---|---|---|---|
-| Insomnia v1 | `src/main/importers/importers/insomnia-1.ts:136` | requires `__export_format === 1` (`:147`); JSON only | legacy `items[]` with `environments.base`; format map form/json/text/xml → MIME (`:50-55`); synthetic ids `__GRP_n__`/`__REQ_n__` |
+| Insomnia v1 | `src/main/importers/importers/insomnia-1.ts:136` | requires `__export_format === 1` (`:147`); JSON only | legacy `items[]` with `environments.base`; format map form/json/text/xml → MIME (`:44-49`); synthetic ids `__GRP_n__`/`__REQ_n__` |
 | Insomnia v2 | `insomnia-2.ts:13` | requires `=== 2` (`:22`) | upgrades string `body` to `{mimeType, text}` |
 | Insomnia v3 | `insomnia-3.ts:12` | requires `=== 3` (`:21`) | intermediate format, no extra migration |
 | Insomnia v4 | `insomnia-4.ts:17` | requires `=== 4` (`:26`); YAML or JSON | main legacy target; produces `resources[]` |
 | Insomnia v5 | **not in the chain**. `src/common/import.ts:203-213` tries `tryImportV5Data` whenever raw content `startsWith('type: ')`, then falls back to `convert()` | `schema_version` 5.x, migrated to 5.1 by `migrateToLatestYaml` | leading whitespace/BOM before `type:` defeats detection; invalid v5 surfaces at most 5 Zod errors (`src/common/import.ts:226-231`) |
-| Postman collection | `postman.ts:964` | v2.0.0 and v2.1.0 schema URLs (`:121-126`), branch `:411-413` | shape differs per version; `{{$faker}}` → Nunjucks faker tags (`:56-66`); `{{var}}` → Nunjucks; description object unwrapped (`postmanDescriptionToString` `:71-88`); auth cases awsv4/basic/bearer/digest/oauth1/oauth2/apikey (`:554-606`); a top-level Postman folder becomes a **workspace** (`src/common/import.ts:353-356`) |
+| Postman collection | `postman.ts:964` | v2.0.0 and v2.1.0 schema URLs (`:121-126`), branch `:411-413` | shape differs per version; `{{$faker}}` → Nunjucks faker tags (`:62-66`); `{{var}}` → Nunjucks; description object unwrapped (`postmanDescriptionToString` `:71-88`); auth cases awsv4/basic/bearer/digest/oauth1/oauth2/apikey (`:554-606`); a top-level Postman folder becomes a **workspace** (`src/common/import.ts:353-356`) |
 | Postman environment | `postman-env.ts:26` | `_postman_variable_scope` must be `globals` or `environment` (`:16-31`) | only `enabled` variables survive; one Environment `_id: '__ENV_1__'`; creates one `environment`-scope workspace per env (`src/common/import.ts:364-379`) |
 | HAR | `har.ts:99` | HAR 1.2 (`log.entries`) or a bare request-shaped root (`:22-27`) | entry `comment` carried into the request name (`:28-33`); fallback name `HAR Import <n>` (`:87`); requests only, no folders |
-| cURL | `curl.ts:468` | command-line text, `curl` or `$ curl` | `SUPPORTED_ARGS` whitelist (`:14`); `IGNORED_VALUE_ARGS` consumed so their values are not taken as the URL (`:40-100`); squished flags like `-XPOST` (`:119`); bearer header wins over `-u` basic; Cookie header merge; `--compressed` → `Accept-Encoding: deflate, gzip`; `-G` moves `-d` into the query; `@file` becomes a file param (`:426`); `--data-urlencode` encodes values; method defaults to POST when a body exists, else GET (`:278`) |
+| cURL | `curl.ts:468` | command-line text, `curl` or `$ curl` | `SUPPORTED_ARGS` whitelist (`:14`); `IGNORED_VALUE_ARGS` consumed so their values are not taken as the URL (`:40-100`); squished flags like `-XPOST` (`:119`); bearer header wins over `-u` basic; Cookie header merge; `--compressed` → `Accept-Encoding: deflate, gzip`; `-G` moves `-d` into the query; `@file` becomes a file param (`:427-429`); `--data-urlencode` encodes values; method defaults to POST when a body exists, else GET (`:278`) |
 | OpenAPI 3 | `openapi-3.ts:801` | `/^3\.\d+\.\d+$/` (`:33`), else returns `null` (`:808`) | only `application/json` and `*/*` bodies (`:38`); first `servers[]` wins; a server variable without a default **throws** (`:93-97`); creates env vars `scheme`, `base_path`, `host` (`:149-159`) plus security vars; tags become folders with ids `fld___WORKSPACE_ID__<sha1-8>` (`:203-244`); URLs are `{{ _.base_url }}<path>` (`:283`); request ids hash operationId or `[method]path` (`:662-665`); body examples prefer `example` > `default`, skip readOnly, merge `allOf`, take the first `oneOf`/`anyOf`; supports http basic/bearer, apiKey header/query/cookie, oauth2 flows (`:56-57`, `:340-430`) |
 | Swagger 2.0 | `swagger-2.ts:495` | `swagger === '2.0'` (`:10`, check `:500`) | MIME json/urlencoded/multipart (`:14`); URLs `{{ _.base_url }}...` (`:142`); basic/apiKey/oauth2 with flows implicit/password/application/accessCode mapped onto Insomnia oauth2 (`:190-265`) |
-| WSDL | `wsdl.ts:102` (`acceptFilePath = true` `:19`) | WSDL 1.1 namespace `http://schemas.xmlsoap.org/wsdl/`, root `definitions` (`:130-137`) | uses the patched `apiconnect-wsdl@2.0.36` (comments `:2-3`) to emit a Postman v2.0 collection, then delegates to `postman.convert`; prefers `importEntry.oriFilePath` so `import`/`include` XSD resolve (`:114-116`); failures become `convertErrorMessage` (`:125`) |
+| WSDL | `wsdl.ts:102` (`acceptFilePath = true` `:19`) | WSDL 1.1 namespace `http://schemas.xmlsoap.org/wsdl/`, root `definitions` (`:130-137`) | uses the patched `apiconnect-wsdl@2.0.36` (comments `:2-3`) to emit a Postman v2.0 collection, then delegates to `postman.convert`; prefers `importEntry.oriFilePath` so `import`/`include` XSD resolve (`:114-116`); failures become `convertErrorMessage` (`:121-123`) |
 | MCP URL | `mcpUrlToInsomniaV5Yaml` (`src/common/insomnia-v5.ts:1015`) | emits v5 `mcpClient.insomnia/5.0` directly | bypasses the importer chain |
 
 After scanning, resources are written by `importResourcesToProject`
@@ -171,7 +171,7 @@ stays case-sensitive (comment `:49`). `fetchImportContentFromURI`
 Import-modal behaviour worth replicating: auto-scan only for `uri`/`curl`/`mcp`
 (`import-modal.tsx:218-236`); an existing workspace found during scan is navigated to
 instead of duplicated (`:243-289`); importing two or more workspaces into ScratchPad is
-blocked (`:395-410`); Postman `.zip` dumps are extracted by
+blocked (`:354-360`); Postman `.zip` dumps are extracted by
 `getFilesFromPostmanExportedDataDump` (`src/common/import.ts:109`).
 
 ## Code snippet generation
@@ -184,9 +184,9 @@ A thin layer over `httpsnippet ^3.0.10` (`packages/insomnia/package.json:122`).
 | IPC `getCodeSnippetTargets()` | `src/main/ipc/main.ts:580-582` - `availableTargets()` |
 | Channel allow-list | `src/main/ipc/electron.ts:29-30` |
 | HAR construction | `src/main/har.ts:246-290` via `exportHarWithRequest(..., purpose: 'preview')` |
-| Masked URL preserved | `convertHarRequestKeepingMask` (`src/common/utils/url/confidential-mask.ts:53-70`) wraps the HTTPSnippet input; `encodeUrlKeepingMask` `:47` |
+| Masked URL preserved | `convertHarRequestKeepingMask` (`src/common/utils/url/confidential-mask.ts:53-63`) wraps the HTTPSnippet input; `encodeUrlKeepingMask` `:47` |
 | Modal | `src/ui/components/modals/generate-code-modal.tsx` |
-| Defaults | `shell` / `curl` (`:73-81`); persisted in `localStorage['insomnia::generateCode::target|client']` (`:52-56`, `:84-85`) |
+| Defaults | `shell` / `curl` (`:73-81`); persisted in `localStorage['insomnia::generateCode::target\|client']` (`:52-56`, `:84-85`) |
 | Editor mode map | `MODE_MAP` `:17-23` (c/java/csharp/objc→`clike`, node→`javascript`, ocaml→`mllike`) |
 | Content-Length hack | only `node`/`native` (`:25-27`, applied `:87-89`) |
 | Types | `src/types/code-snippet.ts` (`HTTPSnippetTarget`, `HTTPSnippetClient`) |
@@ -196,6 +196,7 @@ The mask placeholder is a random per-process token (`MASK_PLACEHOLDER`,
 generated code never leaks the literal `CONFIDENTIAL_MASK_VALUE` and never receives a
 fabricated value. The modal credits Kong/httpsnippet in its footer. Heric should keep the
 same target/client keys to reuse stored preferences.
+
 ## Git sync
 
 ### On-disk model
@@ -208,7 +209,7 @@ same target/client keys to reuse stored preferences.
   (`src/sync/git/repo-file-watcher.ts:280-281`, `:524-525`;
   `src/main/git-service.ts:1279-1284`), because one workspace file carries its whole
   collection tree. `WorkspaceMeta.gitFilePath` records the path
-  (`repo-file-watcher.ts:326`, rename detection `:535`).
+  (`repo-file-watcher.ts:936`; read at `:280`/`:524`; rename detection `:535`).
 - Auxiliary YAML names use `safeToUseInsomniaFileNameWithExt`
   (`src/sync/git/insomnia-filename.ts:1-14`: lowercase, non `[a-z0-9_-]` → `_`).
 
@@ -255,13 +256,13 @@ secrets. Inbound mirrors this: private docs are unreadable (`readFile` throws; t
 `src/sync/git/__tests__/ne-db-client.test.ts:179`) and `writeFile` refuses anything outside
 `.insomnia` (`:121-124`), skips content containing `=======` (`:130-132`), validates path
 id/type against the document (`:139-148`) and requires `models.canSync(doc)`
-(`:149-152`), so a smuggled `Settings` document cannot overwrite global settings.
+(`:149-156`), so a smuggled `Settings` document cannot overwrite global settings.
 
 Path containment lives in `src/sync/git/fs-client.ts`: `resolveWithinBase` `:51`,
 `resolveOrReport` `:73`, `isSafeSymlinkTarget` `:122`, `intoGitViaLink` `:146`; refused
 writes are reported as `BlockedWrite` (`:25-29`). The real-FS client is `fsClient` (`:31`);
 the NeDB-backed client is `ne-db-client.ts:47-290` (`mkdir`/`symlink` throw, `:230`,
-`:290`). `routable-fs-client.ts:21` routes `.insomnia`/`.git` prefixes to different clients
+`:290`). `routable-fs-client.ts:24` routes `.insomnia`/`.git` prefixes to different clients
 and injects `.insomnia` into the root listing.
 
 Canonical-file replay (`src/sync/git/canonical-file.ts`):
@@ -324,15 +325,15 @@ and `getProjectRulesetImportIssue` `:344` (reports a rejected git-imported
 | `github` | yes | **no** - comment: GitHub OAuth Apps don't support refresh tokens yet | OAuth app URL `/oauth/github-app`; repo/email listing | `github.ts:76-81`, `:270`, `:302` |
 | `gitlab` | yes | yes (`refresh_token`) | configurable `instanceUrl`; hostname pinning | `gitlab.ts:142-147`, `:160-168`, `:532-560` |
 | `custom` | no | no | username + token (PAT); cancels on auth failure | `custom.ts:16-21`, `:80` |
-| `native` | no | no | shells out to OS `git credential fill`, stores no secret | `native.ts:19-24`; author read from `git config user.name/user.email` (`src/sync/git/utils.ts:102-130`) |
+| `native` | no | no | shells out to OS `git credential fill`, stores no secret | `native.ts:19-24`; author read from `git config user.name/user.email` (`src/sync/git/utils.ts:106-139`) |
 
 Registry `GitRemoteProviderRegistry` (`registry.ts:3`) with `detectProviderForUrl` (`:84`);
-all four registered in `providers/index.ts:initializeGitRemoteProviders`. OAuth expiry
+all four registered in `providers/index.ts:62`. OAuth expiry
 helper `expiresAtFromOAuthExpiresIn` (`utils.ts:20`); isomorphic-git callbacks
 `gitCallbacks` (`utils.ts:142-149`). Git HTTP traffic uses Electron `net` so the system
 proxy and certificates apply (`src/sync/git/http-client.ts:5-13`). URL helpers
 `addDotGit`, `isAzureDevOpsUrl` (dev.azure.com, `*.visualstudio.com`, `/_git/`),
-`ensureGitRepoUrlSuffix` live in `src/sync/git/url-utils.ts` (re-exported `utils.ts:13`).
+`ensureGitRepoUrlSuffix` live in `src/sync/git/url-utils.ts` (re-exported `utils.ts:12`).
 
 ### Cloud VCS (`packages/insomnia-vcs`)
 
@@ -368,7 +369,7 @@ reference.
 - Editor `src/ui/components/spec-view.tsx` registers a CodeMirror lint helper named
   `'openapi'` (`:228-277`) that calls
   `window.main.lintSpec({ documentContent, projectId, rulesetContent })` (`:231-235`);
-  diagnostics map to CodeMirror positions (`:246-259`); autosave is debounced 500 ms
+  diagnostics map to CodeMirror positions (`:248-262`); autosave is debounced 500 ms
   (`:317`). Non-Git projects mirror `ProjectLintRuleset.contents` to
   `<userData>/projects/<projectId>/.spectral.yaml` (`:177-181`); Git projects lint against
   `gitSyncRulesetPath` (`:286-292`, `:458`).
@@ -391,25 +392,25 @@ Lint execution (`src/main/ipc/main.ts:496-570`):
    `LINT_WORKER_TIMEOUT_MS = 30_000` (`:535-545`).
 4. Result is `{ diagnostics }`, `{ error }` or `{ cancelled }` (`:546-570`).
 
-Worker safeguards (`src/main/lint-process.mjs`): https-only resolver (`:61`), explicit
-private/loopback block list (`:17-60`), and a post-DNS re-resolution guard
-`assertResolvesToPublicHost` (`:65-72`) applied to both http and https (`:93-95`). The
+Worker safeguards (`src/main/lint-process.mjs`): https-only resolver (`:57-62`), explicit
+private/loopback block list (`:17-51`), and a post-DNS re-resolution guard
+`assertResolvesToPublicHost` (`:65-72`) applied to both http and https (`:92-95`). The
 shared logic is `src/main/private-host.ts:10-37` (0/8, 127/8, 10/8, 172.16/12,
 192.168/16, 169.254/16, `::1`, `fc00::/7`, `fe80::/10`); `inso` duplicates it in
-`packages/insomnia-inso/src/commands/lint-specification.ts:15-60`.
+`packages/insomnia-inso/src/commands/lint-specification.ts:15-65`.
 
 Ruleset validator (`src/common/spectral-ruleset-validator.ts`): top level limited to
 `rules` and `extends` (`:7`); `extends` limited to `spectral:oas|asyncapi|arazzo` (`:10`);
 only a fixed list of built-in functions is allowed (`:13-29`);
-`__proto__`/`prototype`/`constructor` rejected (`:31`, `:61`); `field` may not contain
-`.`, `[`, `]`; `documentationUrl` must be https (`:124-125`); entry
-`validateSpectralRuleset` `:141-170`.
+`__proto__`/`prototype`/`constructor` rejected (`:31`, `:41-43`); `field` must be a plain
+property name - no `.`, `[` or `]` (`:59-61`); `documentationUrl` must be https (`:124-125`); entry
+`validateSpectralRuleset` `:141-183`.
 
 ## inso CLI commands and flags
 
 Entry `packages/insomnia-inso/src/cli.ts` (1061 lines), commander-based, exit codes 0/1.
-Configuration comes from `.insorc` via cosmiconfig (`tryToReadInsoConfigFile` `:73-93`);
-**only** `workingDir`, `ci`, `verbose`, `printOptions` are honoured from it (`:85-93`).
+Configuration comes from `.insorc` via cosmiconfig (`tryToReadInsoConfigFile` `:75-98`);
+**only** `workingDir`, `ci`, `verbose`, `printOptions` are honoured from it (`:86-91`).
 `--verbose` raises the consola level (`:308`); `--ci` forces a basic reporter and
 disables prompts (`:309`).
 
@@ -419,8 +420,8 @@ Global options (`:344-348`): `-w/--workingDir <dir>`, `--verbose`, `--ci`,
 | Command | Line | Flags |
 |---|---|---|
 | `run test [identifier]` | `:354` | `-e/--env`, `-t/--testNamePattern`, `-r/--reporter` (default `spec`), `-b/--bail`, `--keepFile`, `--requestTimeout`, `-k/--disableCertValidation`, `--httpsProxy`, `--httpProxy`, `--noProxy`, `-f/--dataFolders` (`:356-374`) |
-| `run collection [identifier]` | `:494` | `-t/--requestNamePattern`, `-i/--item` (repeatable), `-e/--env`, `-g/--globals` (id or file), `--delay-request`, `--requestTimeout`, `--env-var` (repeatable `key=value`), `-n/--iteration-count`, `-d/--iteration-data` (JSON/CSV path or URL), `-r/--reporter`, `-b/--bail` (first non-200), `--disableCertValidation`, proxies, `-f/--dataFolders`, `--output <file>`, `--includeFullData <redact|plaintext>`, `--acceptRisk` (`:496-531`) |
-| `lint spec [identifier]` | `:896` | `-r/--ruleset <path>` (`:897-900`); identifier is a spec file or a DB spec id/name |
+| `run collection [identifier]` | `:494` | `-t/--requestNamePattern`, `-i/--item` (repeatable), `-e/--env`, `-g/--globals` (id or file), `--delay-request`, `--requestTimeout`, `--env-var` (repeatable `key=value`), `-n/--iteration-count`, `-d/--iteration-data` (JSON/CSV path or URL), `-r/--reporter`, `-b/--bail` (first non-200), `--disableCertValidation`, proxies, `-f/--dataFolders`, `--output <file>`, `--includeFullData <redact\|plaintext>`, `--acceptRisk` (`:496-531`) |
+| `lint spec [identifier]` | `:896` | `-r/--ruleset <path>` (`:898-901`); identifier is a spec file or a DB spec id/name |
 | `export spec [identifier]` | `:962` | `-o/--output <path>`, `-s/--skipAnnotations` (`:964-965`) |
 | `script <script-name>` | `:1008` | runs a command from `.insorc.scripts`; must start with `inso`; unknown options pass through (`:1012-1034`) |
 | `generate-docs` | `:1041` | hidden; prints docs then exits 1 |
@@ -431,7 +432,7 @@ Behaviour details:
   file (when the path is a file) → Git repo `.insomnia` folder → NeDB app-data directory
   → `emptyDb()` plus a warning listing the valid workingDir shapes (`:48-65`).
 - Export-file adapter accepts **only** `__export_format` 4 and 5
-  (`db/adapters/insomnia-adapter.ts:107-115`); v5 goes through `importInsomniaV5Data`
+  (`db/adapters/insomnia-adapter.ts:110-115`); v5 goes through `importInsomniaV5Data`
   (`:4`, `:97`).
 - Git adapter reads `.insomnia/<Type>/*`, requires `obj.type === folder type`, and keeps
   only `models.getModel(t)?.canSync` types (`db/adapters/git-adapter.ts:41-57`).
@@ -448,8 +449,8 @@ Behaviour details:
   `fileName` or `name` - `db/models/api-spec.ts:10-17`). Custom rulesets are bundled and
   compiled (`commands/lint-specification.ts:92-112`), written to an `mkdtemp` directory,
   and removed after load. Diagnostics print as
-  `line:col - SEVERITY - code - message - path` (`:130-137`); exit 1 only when at least one
-  diagnostic has Error severity (`:140-143`).
+  `line:col - SEVERITY - code - message - path` (`:130-136`); exit 1 only when at least one
+  diagnostic has Error severity (`:139-143`).
 - `export spec`: `x-kong-*` keys are removed recursively and the document is
   re-stringified as YAML (`commands/export-specification.ts:25-41`);
   `writeFileWithCliOptions` creates parent directories (`:8-17`). Without `--output` it
@@ -471,31 +472,31 @@ against Heric without re-authoring inputs.
 
 | Area | Test / fixture | What it pins | Cite |
 |---|---|---|---|
-| Importer snapshots | `src/main/importers/importers/index.test.ts` | every `*-input.*` fixture through `convert()`, `Date.now` frozen, snapshot-compared | `:5-45` |
+| Importer snapshots | `src/main/importers/importers/index.test.ts` | every `*-input.*` fixture through `convert()`, `Date.now` frozen, snapshot-compared | `:14-52` |
 | Importer fixtures | `src/main/importers/importers/fixtures/{curl,har,insomnia-1..4,openapi3,postman,postman-env,swagger2,wsdl}` | 75 input files (curl 14, openapi3 14, postman 25, swagger2 7, har 5, wsdl 2, ...) | directory listing |
 | cURL parser | `importers/curl.test.ts:5` (hundreds of cases), `:355` non-cURL input returns null, `:362` explicit Authorization beats `-u` | flag handling, method/body inference | |
-| Postman | `importers/postman.test.ts:6-640` | Nunjucks transform, JSONPath normalization, headers, awsv4/basic/bearer/digest/oauth1/oauth2, URL, descriptions | |
-| OpenAPI 3 | `importers/openapi-3.test.ts:7-300` | object query-param flattening, nested objects, allOf/oneOf/anyOf | |
-| Script translation | `importers/translate-postman-script.test.ts:5-200` | `pm.*` → Insomnia script translation | |
+| Postman | `importers/postman.test.ts:6-637` | Nunjucks transform, JSONPath normalization, headers, awsv4/basic/bearer/digest/oauth1/oauth2, URL, descriptions | |
+| OpenAPI 3 | `importers/openapi-3.test.ts:5-498` | object query-param flattening, nested objects, allOf/oneOf/anyOf | |
+| Script translation | `importers/translate-postman-script.test.ts:5-310` | `pm.*` → Insomnia script translation | |
 | HAR export | `src/common/__tests__/har.test.ts:39-507` | single/multiple requests, response export, preview-vs-export masking | |
 | Ruleset validation | `src/common/__tests__/spectral-ruleset-validator.test.ts` | empty/invalid YAML, disallowed keys, prototype pollution | |
-| Ruleset bundling | `src/main/__tests__/bundle-spectral-ruleset.test.ts:68-240` | flattening, override order, cycles, depth, tuple format | |
+| Ruleset bundling | `src/main/__tests__/bundle-spectral-ruleset.test.ts:68-499` | flattening, override order, cycles, depth, tuple format | |
 | Ruleset cache | `src/main/__tests__/spectral-ruleset-cache.test.ts` | per-project path, skip-if-unchanged, recompile after external delete | |
 | Git VCS | `src/sync/git/__tests__/git-vcs.test.ts:9-900` | stage/unstage, commit, branches, raw HEAD blobs, push upstream, undo pending changes, manual resolution, tracking remotes | |
-| Git FS safety | `__tests__/fs-client.test.ts:9-270` | 19 symlink-containment cases (escape, chain, broken link, `.git` write) | |
+| Git FS safety | `__tests__/fs-client.test.ts:9-270` | 17 cases, mostly symlink containment (escape, chain, broken link, `.git` write) | |
 | NeDB client | `__tests__/ne-db-client.test.ts:24-620` | read/write/readdir/stat/unlink, private-doc rejection, conflict markers, id/type mismatch, `canSync` restriction | |
 | Watcher | `__tests__/repo-file-watcher.test.ts:36-330` | orphan reconciliation, folder resurrection, ruleset problems, symlink write containment | |
-| Socket.IO payloads | `__tests__/repo-file-watcher-payload.test.ts:72-140` | payloads survive fs→db round-trips | |
+| Socket.IO payloads | `__tests__/repo-file-watcher-payload.test.ts:72-139` | payloads survive fs→db round-trips | |
 | Canonical files | `__tests__/canonical-file.test.ts:87-320` | replay stability, `confidentialKeys` survival, undiscardable changes | |
 | Repo migration | `__tests__/git-repo-migration.test.ts:35-215` | `git/`→`.git/`, `other/`→root, version stamp, symlink refusal | |
 | Sync queue | `src/sync/git/sync-queue.test.ts:5-140` | FIFO, single-flight, `waitUntilDone`, error isolation | |
 | Git service | `src/main/__tests__/git-service-{diff-diagnostics,import-legacy-insomnia-folder,repo-folder,clone-folder-naming}.test.ts` | debug-mode gating, legacy `.insomnia` migration, relocate/adopt rules | |
 | Delta (cloud) | `src/sync/delta/__tests__/{diff,patch}.test.ts` | block map, operations, patch round-trip | |
 | Cloud VCS | `packages/insomnia-vcs/src/__tests__/{vcs,util,crypt,backend-projects}.test.ts`, `store/__tests__/index.test.ts`, `store/hooks/__tests__/compress.test.ts` | staging, snapshots, fast-forward merge, three-way conflict matrix, AES/RSA, gzip hook | |
-| inso CLI end-to-end | `packages/insomnia-inso/src/cli.test.ts:16-79` | literal command arrays for exit 0 and exit 1 covering lint/export/run test/run collection across NeDB, Git, v4 and v5 | |
+| inso CLI end-to-end | `packages/insomnia-inso/src/cli.test.ts:12-83` | literal command arrays for exit 0 and exit 1 covering lint/export/run test/run collection across NeDB, Git, v4 and v5 | |
 | inso unit | `iteration-data.test.ts`, `commands/lint-specification.test.ts`, `commands/export-specification.test.ts`, `db/adapters/{git,insomnia,ne-db}-adapter.test.ts`, `reporter/index.test.ts`, `reporters/fancy-reporter.test.ts` | CSV edge cases, lint pass/fail, `x-kong-*` stripping, adapter shapes, reporter output | |
 | inso fixtures | `src/db/fixtures/{nedb,git-repo,git-repo-malformed-spec,insomnia-v4,insomnia-v5,certs}`, `src/commands/fixtures/{openapi-spec.yaml,with-ruleset}`, `src/examples/*.yml` | DBs, YAML exports, malformed specs, certificates, 15 runnable example collections | |
-| App export/import E2E | `packages/insomnia-smoke-test/tests/smoke/{export,export-openapi-spec,import,import-from-url,import-deep-link,paste-curl-import,custom-lint-rules}.test.ts` | UI flows; `export.test.ts:15-30` compares against `fixtures/export/*.yaml` | |
+| App export/import E2E | `packages/insomnia-smoke-test/tests/smoke/{export,export-openapi-spec,import,import-from-url,import-deep-link,paste-curl-import,custom-lint-rules}.test.ts` | UI flows; `export.test.ts:15-30` imports `fixtures/export/*.yaml` and re-reads the exported files | |
 | App Git E2E | `tests/smoke/{git-sync,git-local-repos,git-repo-relocation,disable-git-sync}.test.ts` | branch/commit/merge/push against a bundled bare repo, folder relocation | |
 | Fixtures | `packages/insomnia-smoke-test/fixtures/{export,import,files,git-repo/git-server.git,inso-nedb,insomnia-legacy-db,certificates}` | canonical v5 YAMLs, Postman input, valid/invalid `.spectral.yaml`, CSV/PDF/XML/TXT uploads, DB snapshots | |
 
@@ -513,7 +514,7 @@ is read from the cited path.
 | 1 | v5 YAML export per workspace | `packages/insomnia/src/common/insomnia-v5.ts:1043` | scope→`type` map including the `mcpClient.insomnia/5.0` oddity; Zod validation; empty-field stripping | P0 |
 | 2 | v5 YAML import + migration to 5.1 | `src/common/insomnia-v5.ts:1006`, `:990`; `src/common/insomnia-schema-migrations/index.ts:60` | `startsWith('type: ')` sniffing; at most 5 Zod errors reported | P0 |
 | 3 | Project export folder (one YAML per workspace) | `src/ui/components/settings/import-export.tsx:187-206` | private-env prompt; folder name `insomnia-export.<project>.<ms>` | P0 |
-| 4 | Selected-request export (`requestIds`) | `src/common/insomnia-v5.ts:1103-1111`; `import-export.tsx:336-346` | keeps all request groups | P1 |
+| 4 | Selected-request export (`requestIds`) | `src/common/insomnia-v5.ts:1103-1111`; `import-export.tsx:301-346` | keeps all request groups | P1 |
 | 5 | HAR 1.2 export (workspace/request/current) | `src/main/har.ts:32`, `:39`, `:103` | tab-indented JSON; `Content-Length` injection; masked auth | P0 |
 | 6 | HAR import | `src/main/importers/importers/har.ts:99` | bare-request root accepted; comments become names; no folders | P0 |
 | 7 | cURL import (text + clipboard paste) | `importers/curl.ts:468`; `src/ui/hooks/use-global-curl-paste-import.ts:41` | flag whitelist/ignored-value args; squished `-XPOST`; `@file`; `--data-urlencode` | P0 |
@@ -534,7 +535,7 @@ is read from the cited path.
 | 22 | Branch create/checkout/delete | `git-service.ts:2645`, `:2728`, `:2923` | - | P0 |
 | 23 | File watcher (FS↔DB, 10 s poll + 300 ms debounce) | `src/sync/git/repo-file-watcher.ts:56-57`, `:352`, `:488` | conflict markers; self-write hash skip; orphan cleanup; ruleset sync | P0 |
 | 24 | Canonical YAML replay / undiscardable detection | `src/sync/git/canonical-file.ts:24`, `:70`, `:88`, `:128` | prevents phantom diffs after clone; refuses replay that invents ids | P0 |
-| 25 | NeDB-backed VCS filesystem and write guards | `src/sync/git/ne-db-client.ts:116-152` | `.insomnia`-only, conflict-marker skip, id/type check, `canSync` allow-list | P0 |
+| 25 | NeDB-backed VCS filesystem and write guards | `src/sync/git/ne-db-client.ts:116-156` | `.insomnia`-only, conflict-marker skip, id/type check, `canSync` allow-list | P0 |
 | 26 | Path containment / blocked writes | `src/sync/git/fs-client.ts:51-170` | symlink escapes, `.git` writes, traversal segments | P0 |
 | 27 | Repo layout migration (`git/`→`.git/`, root YAML) | `src/sync/git/git-repo-migration.ts:200` | absolute-path guard; idempotent version stamp | P1 |
 | 28 | Legacy `.insomnia` folder import | `src/main/git-service.ts:1188` | rejects Settings smuggling; deletes folder after migration | P1 |
@@ -557,6 +558,6 @@ is read from the cited path.
 | 45 | Iteration data (JSON/CSV) | `cli.ts:207-246`; `iteration-data.test.ts` | quoted commas/quotes, CRLF, short rows | P1 |
 | 46 | `inso` output redaction | `commands/run-collection/result-report.ts:38-230` | header/auth-whitelist/environment redaction | P1 |
 | 47 | Cloud VCS three-way merge algorithms (reference) | `packages/insomnia-vcs/src/util.ts:67-500`; `vcs.ts:545` | snapshot state maps, conflict resolution records | P2 (out of scope; local-first) |
-| 48 | Cloud VCS crypto and storage drivers (reference) | `packages/insomnia-vcs/src/crypt.ts:1-245`; `store/drivers/file-system-driver.ts:10-49` | RSA-OAEP-256/AES-GCM; atomic tmp+rename | P2 |
+| 48 | Cloud VCS crypto and storage drivers (reference) | `packages/insomnia-vcs/src/crypt.ts:13`, `:78`; `store/drivers/file-system-driver.ts:10-49` | RSA-OAEP-256/AES-GCM; atomic tmp+rename | P2 |
 | 49 | Delta diff/patch (cloud snapshots) | `src/sync/delta/diff.ts:22`; `patch.ts:3` | only if cloud sync is ever added | P2 |
 | 50 | `generate-docs` hidden command | `packages/insomnia-inso/src/cli.ts:1041-1044` | internal doc generation; not user-facing | P2 |
