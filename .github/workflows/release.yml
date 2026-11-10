@@ -100,10 +100,13 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: artifacts-${{ matrix.target }}
+          # Only the archives and their checksums. `dist/` is the staging
+          # directory for the tar step: uploading it as well would put the raw
+          # binaries and the licence files at the root of the GitHub Release,
+          # once per target.
           path: |
             he*.tar.gz
             he*.tar.gz.sha256
-            dist/**
 
   publish:
     name: publish GitHub Release
