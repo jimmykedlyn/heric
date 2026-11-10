@@ -24,8 +24,8 @@ Edge cases:
 
 - **Organization dashboard** — route `organization.$organizationId._index.tsx`; reads cached organizations from localStorage (`routes/organization._index.tsx:29`, `:35`).
 - **Project dashboard** — `organization.$organizationId.project.$projectId._index.tsx`; workspace list with persisted filter and sort (`:113-117`), filter matching at `:161-171`, empty-state message at `:555-559`. Learning-feature dismissal is persisted under a per-project key (`organization.$organizationId.project.tsx:45`).
-- **Workspace (debug)** — `...workspace.$workspaceId.debug.tsx`. The pane header (`ui/components/workspace/workspace-pane-header.tsx`) shows breadcrumbs, environment picker, cookies button with count, certificates button with count, and has a settings entry (`:143-167`). Breadcrumbs collapse to ellipsis when longer than 4 (`:67-78`).
-- **Sidebar** — `ui/components/sidebar/project-navigation-sidebar/project-navigation-sidebar.tsx` (1282 lines). Flat list of projects → workspaces → pinned requests → collection tree; supports fuzzy filter with 300 ms debounce (`:116-121`, `:159`), per-org persisted expansion (`:120`) and manual workspace ordering (`:112`). Focus mode narrows the sidebar to one collection when `settings.sidebarFocusForCollections` is on (`:524-540`). Request nodes render method badges and live connection dots (`request-node.tsx:30-113`), inline rename via `EditableInput` (`:172-186`), and per-node context menus (`:198-226`).
+- **Workspace (debug)** — `...workspace.$workspaceId.debug.tsx`. The pane header (`ui/components/workspace/workspace-pane-header.tsx`) shows breadcrumbs, environment picker, cookies button with count and certificates button with count (`:143-170`); the collection settings entry is gated by the `hasSettings` prop (`:109`). Breadcrumbs collapse to ellipsis when longer than 4 (`:67-78`).
+- **Sidebar** — `ui/components/sidebar/project-navigation-sidebar/project-navigation-sidebar.tsx` (1282 lines). Flat list of projects → workspaces → pinned requests → collection tree; supports fuzzy filter with 300 ms debounce (`:116-121`, `:159`), per-org persisted expansion (`:120`) and manual workspace ordering (`:112`). Focus mode narrows the sidebar to one collection when `settings.sidebarFocusForCollections` is on (`:524-540`). Request nodes render method badges and live connection dots (`request-node.tsx:30-113`), inline rename via `EditableInput` (`:173-191`), and per-node context menus (`:198-229`).
 - **Request pane** — `ui/components/panes/request-pane.tsx`; tabs Params / Body / Auth / Headers / Scripts / Docs (`:125-183`), each with count or dot badges. Scripts has two sub-tabs, pre-request and after-response (`:333-406`).
 - **Response pane** — `ui/components/panes/response-pane.tsx`; tabs Preview / Headers / Cookies / Tests / → Mock / Console (`:186-233`); header shows status, time and size tags plus `ResponseHistoryDropdown` (`:153-164`); Preview toolbar hosts `PreviewModeDropdown`, copy and download (`:236-247`, viewer `:248-265`).
 - **Runner pane** — `...workspace.$workspaceId.debug.runner.tsx`; request selection, run button, results tabs; `request_send` triggers run (`:509-515`).
@@ -33,12 +33,12 @@ Edge cases:
 - **Spec view** — `...workspace.$workspaceId.spec.tsx` renders the OpenAPI/Swagger spec editor (largest UI component `ui/components/spec-view.tsx`, 1429 lines).
 - **Environment editor screen** — `...workspace.$workspaceId.environment.tsx`, opened from the picker's Edit action (`ui/components/environment-picker.tsx:253-260`).
 - **Mock server and MCP panes** — `...workspace.$workspaceId.mock-server.tsx`, `...workspace.$workspaceId.mcp.tsx`; MCP workspaces render `<McpPane />` from the debug route (`debug.tsx:158`) and keep their own list filter persisted per workspace (`ui/components/mcp/mcp-pane.tsx:96`).
-- **Command palette** — global `Cmd/Ctrl+P`; dialog with sections Requests / API Collections / Environments (`ui/components/command-palette.tsx:51-59`); search is debounced 250 ms and abortable (`ui/hooks/use-command-search.ts:105`; abort at `:42-44`).
+- **Command palette** — global `Cmd/Ctrl+P`; dialog with sections Requests / API Collections / Environments (`ui/components/command-palette.tsx:51-57`); search is debounced 250 ms and abortable (`ui/hooks/use-command-search.ts:105`; abort at `:42-44`).
 - **Modals** — imperative singleton registry: modals are mounted once in `ui/modals.tsx` and exposed via `registerModal` / `showModal` (`ui/components/modals/index.ts:13-58`). Registered: Alert, Error, Prompt, Wrapper, Ask, Select, RequestRenderError, CodePrompt, Nunjucks, GenerateCode, Settings, ResponseDebug, AddKeyCombination, SyncMerge, GitProjectStaging, Upgrade, Logout (`ui/modals.tsx:36-71`).
 
 Edge cases:
-- P0: Tabs are per-organization and persisted (`ui/context/app/insomnia-tab-context.tsx:89-98`). Deleting a request, folder, workspace or project closes matching tabs through `db.changes` (`ui/components/tabs/tab-list.tsx:240-257`), including related runner tabs (`tab-list.tsx:125-147`).
-- P1: Closing the last open tab navigates to the project dashboard, except in Scratchpad where no navigation happens (`insomnia-tab-context.tsx:239-249`). The fallback can be overridden per close (`CloseTabOptions.fallbackUrl`, `insomnia-tab-context.tsx:44-50`).
+- P0: Tabs are per-organization and persisted (`ui/context/app/insomnia-tab-context.tsx:89-98`). Deleting a request, folder, workspace or project closes matching tabs through `db.changes` (`ui/components/tabs/tab-list.tsx:238-257`), including related runner tabs (`tab-list.tsx:125-147`).
+- P1: Closing the last open tab navigates to the project dashboard, except in Scratchpad where no navigation happens (`insomnia-tab-context.tsx:239-249`). The fallback can be overridden per close (`CloseTabOptions.fallbackUrl`, `insomnia-tab-context.tsx:47-53`).
 - P1: Only one temporary tab exists per organization: adding another temporary tab replaces it in place (`insomnia-tab-context.tsx:166-191`).
 - P2: Reopened-tab stack (`closedTabsRef`) is in-memory only (`insomnia-tab-context.tsx:105`), so Ctrl+Shift+T history is lost on reload.
 - P2: Middle-click closes a tab and the right-click menu offers Close All / Close Others via a native context menu (`ui/components/tabs/tab.tsx:104-120`).
@@ -49,7 +49,7 @@ Edge cases:
 - URL bar (`ui/components/request-url-bar.tsx`): method selector + one-line URL editor keyed by environment and VCS version, with a stable `historyKey` for undo state (`request-pane.tsx:103-116`). Enter sends/connects; a capture-phase `keydown` listener on `#sidebar-request-gridlist` sends on `metaKey+Enter` (`request-url-bar.tsx:260-272`, mac-only meta check). Shortcuts `request_focusUrl`, `request_send`, `request_toggleHttpMethodMenu`, `request_showOptions` are registered at `request-url-bar.tsx:283-298`.
 - Send options dropdown: Generate Client Code, Send After Delay, Repeat on Interval, Download After Send, Send And Download. Interval and delay are driven by `useInterval`/`useTimeoutWhen` below the send effect (`request-url-bar.tsx:260-281`); the download path persists on RequestMeta (`downloadPath`, `insomnia-data/src/models/request-meta.ts:22`).
 - Params tab: key-value editor or bulk edit text; toggling bulk writes `settings.useBulkParametersEditor` (`request-pane.tsx:216-235`); bulk mode passed to the editor at `:241`. "Import from URL" extracts the query string with `extractQueryStringFromUrl` (`:58`, `:10`) and patches URL + parameters. A rendered query-string preview is shown above the editor. Path parameters are derived with `getCombinedPathParametersFromUrl` (`:87`) and rendered separately; the dismissible path-parameter tip is persisted in localStorage (`dismissPathParameterTip`, `:53`, `:280`).
-- Body tab: content-type dropdown (`ui/components/editors/body/body-editor.tsx:190`), branches for form-urlencoded (`:135-141`), form-data with file support (`:82`, `:143-144`), single file body (`CONTENT_TYPE_FILE`, `:91`, `:145-146`) which asks whether to update the Content-Type from the file extension (`:107-112`), GraphQL (`:64-66`, `:147-152`), and raw editor with prettify (`:161-170`). Event-stream and empty states are handled in the same component (`:32`, `:185-190`).
+- Body tab: content-type dropdown (`ui/components/editors/body/body-editor.tsx:190`), branches for form-urlencoded (`:135-142`), form-data with file support (`:82`, `:143-144`), single file body (`CONTENT_TYPE_FILE`, `:91`, `:145-146`) which asks whether to update the Content-Type from the file extension (`:107-112`), GraphQL (`:64-66`, `:147-157`), and raw editor with prettify (`:160-167`). Event-stream and empty states are handled in the same component (`:168-175` for event streams, `:177-185` for the generic empty state).
 - Auth tab: delegated to `AuthWrapper` (`request-pane.tsx:22`, `:299-302`), covering inheritable auth types.
 - Headers tab: read-only calculated rows `Accept: */*`, `Host: <calculated at runtime>`, `User-Agent: insomnia/<version>` (`ui/components/editors/request-headers-editor.tsx:30-33`); WebSocket requests use a different set (`:22-28`). Removing the last User-Agent header re-enables/keeps the read-only row (`:60-63`). Bulk mode uses `name: value` lines (`:111`).
 - Scripts tab: pre-request and after-response editors with stable keys per request (`request-pane.tsx:372-404`). Docs tab: Markdown editor (`:408-420`).
@@ -69,9 +69,9 @@ Edge cases:
 - Content sniffing: content-type is taken from headers, but HTML is detected heuristically and JSON is detected from the body (`response-viewer.tsx:135-161`); charset aliases are normalized (`:164-179`).
 - Viewer branches: JSON in a CodeEditor with JSONPath filtering and clickable links (`:235-276`), images as data URLs (`:278-296`), HTML in an Electron `<webview>` with `<base href>` injection and JS disabled per `settings.disableHtmlPreviewJs` (`:298-307`, `ui/components/viewers/response-web-view.tsx:16-29`), PDF (`:309-315`), CSV via PapaParse (`:317-323`), multipart via IPC (`:325-341`), audio (`:343-353`), raw text (`:355-371`), and source fallback (`:373-392`).
 - Response filter is persisted per request (`responseFilter`) with history capped at 10 entries (`ui/components/panes/response-pane.tsx:46-67`); filter input is applied through the CodeEditor (`response-viewer.tsx:253-270`).
-- Response history dropdown groups responses by Just Now / minutes / today / week / older (`ui/components/dropdowns/response-history-dropdown.tsx:253-269`); selecting one patches `activeResponseId` (`:101`) and restores the associated request version.
-- Save/download: `response-pane-utils.ts` uses `window.dialog.showSaveDialog` (`:27`) and `window.main.writeResponseBodyToFile` (`:41`); prettified JSON is serialized with `jsonPrettify` (`:68`). Save dialogs in the preview menu also remember the directory via `insomnia.lastExportPath` (`response-multipart-viewer.tsx:82`, `:104`).
-- Export: HAR export through `window.main.exportHarCurrentRequest` (`preview-mode-dropdown.tsx:42`); HTTP debug export (`:83`, `:152-155`); "Export prettified response" disabled above 5 MB (`:139-144`).
+- Response history dropdown groups responses by Just Now / less than two hours / today / this week / older (`ui/components/dropdowns/response-history-dropdown.tsx:253-271`); selecting one patches `activeResponseId` (`:101`) and restores the associated request version.
+- Save/download: `response-pane-utils.ts` uses `window.dialog.showSaveDialog` (`:27`) and `window.main.writeResponseBodyToFile` (`:41`); prettified JSON is serialized with `jsonPrettify` (`:68`). The multipart save dialog remembers the last directory via `insomnia.lastExportPath` (`response-multipart-viewer.tsx:82`, `:104`).
+- Export: HAR export through `window.main.exportHarCurrentRequest` (`preview-mode-dropdown.tsx:42`); HTTP debug export (`:70`, `:152-160`); "Export prettified response" disabled above 5 MB (`:139-148`).
 - Password masking in environment/console views: random 4–11 mask characters, initially visible when `settings.showPasswords` (`ui/components/viewers/password-viewer.tsx:6-44`).
 
 Edge cases:
@@ -95,7 +95,7 @@ Edge cases:
 - P1: Only one environment can be "active" per scope, but both collection and project environments are active simultaneously and merged during rendering.
 - P1: Private environments and vault secrets are local-only; they never sync, and secret rows are unavailable without a vault key (`key-value-editor.tsx:167-169`).
 - P1: Deleting the active environment falls back to the base environment.
-- P2: The environments modal can be opened from anywhere via `uiEventBus OPEN_ENVIRONMENTS_MODAL` with a preselected environment (`ui/event-bus.ts:12-20`, `workspace-pane-header.tsx:44-64`). The modal closes/reopens when `location.key` changes (`workspace-pane-header.tsx:44-64`).
+- P2: The environments modal can be opened from anywhere via `uiEventBus OPEN_ENVIRONMENTS_MODAL` with a preselected environment (`ui/event-bus.ts:12-20`, `workspace-pane-header.tsx:40-64`). The modal closes when `location.key` changes (`workspace-pane-header.tsx:60-64`).
 
 ## Settings and themes
 
@@ -104,7 +104,7 @@ Edge cases:
 - General tab toggles: bulk header editor, vertical layout (help text: side-by-side above 880px), template-tag source/value, reveal passwords, hide menu bar (non-mac only), raw template syntax, sidebar focus, legacy unit tests, hide confidential values (`ui/components/settings/general.tsx:56-86`); autocomplete delay 0–3000 ms (`:91-98`); editor key map Default/Vim/Emacs/Sublime and inline keymap toggle (`:148-176`). Toggling confidential-value hiding shows an AlertModal about response history (`:28-44`).
 - Theme system: plugin themes are listed with previews; "Use OS color scheme" checkbox toggles `autoDetectColorScheme` (`ui/components/settings/theme-panel.tsx:76-96`); when auto-detect is on, each theme exposes separate Light/Dark buttons that call `activate(name, 'light'|'dark')`, otherwise a single default button (`:112-148`). `useThemes` patches settings (`ui/hooks/theme.ts:14-55`) and `activate` writes `lightTheme`/`darkTheme` (`:58-80`).
 - Theme CSS: `generateThemeCSS` maps theme blocks to wrapper classes `.theme--pane`, `.theme--pane__header`, `.theme--sidebar`, `.theme--sidebar__list`, `.theme--sidebar__header`, `.theme--app-header`, `.theme--dialog`, `.theme--dropdown__menu`, `.theme--tooltip`, `.theme--link`, `.theme--editor` (`ui/plugins/misc.ts:74-114`). `applyColorScheme` injects one constructed stylesheet into `document.adoptedStyleSheets` and appends raw theme CSS (`:234-300`). Theme names are normalized/validated (`:16-24`).
-- OS scheme detection: `useIsLightTheme` reads root settings and listens to `prefers-color-scheme` (`ui/hooks/use-is-light-theme.ts:9-24`), so components can pick light/dark variants without importing the root loader.
+- OS scheme detection: `useIsLightTheme` reads root settings and listens to `prefers-color-scheme` (`ui/hooks/use-is-light-theme.ts:9-26`, listener `:44-55`), so components can pick light/dark variants without importing the root loader.
 - Font/UI side effects: CSS variables `--font-default`, `--font-monospace`, `--font-ligatures`, `html { font-size }`, and native menu-bar visibility from `autoHideMenuBar` (`ui/hooks/use-settings-side-effects.ts:12-30`).
 - Document title: `<Project> - <Workspace> (<Environment>) – <Request>` falling back to the product name (`ui/hooks/use-document-title.ts:6-24`).
 - Keyboard settings tab (`ui/components/settings/shortcuts.tsx`): table rendered from `hotKeyRegistry` in registry order (`:30-60`); "Reset all" restores `newDefaultRegistry()` (`:36-43`); per-row menu adds a keyboard shortcut through `AddKeyCombinationModal` with duplicate detection via `isKeyCombinationInRegistry` (`:22`, `:79-90`), removes a combination, or resets the row (`:129-133`).
@@ -117,7 +117,7 @@ Edge cases:
 
 ## Keyboard shortcuts
 
-Registry: `packages/insomnia-data/common-src/hotkeys.ts`. Defaults are `defaultRegistry` (`:51-200`); platform selection by `getPlatformKeyCombinations` (`:212-218`); display rendering by `constructKeyCombinationDisplay` (`:318+`) and `<Hotkey>` (`ui/components/hotkey.tsx:37-47`). Bindings are installed by `useKeyboardShortcuts` / `useDocBodyKeyboardShortcuts` via `tinykeys` on `window` in **capture** phase (`ui/components/keydown-binder.ts:18-58`, capture at `:46`). User rebindings are persisted in `settings.hotKeyRegistry` (`insomnia-data/common-src/settings.ts:153`); the table below shows the shipped defaults.
+Registry: `packages/insomnia-data/common-src/hotkeys.ts`. Defaults are `defaultRegistry` (`:51-200`); platform selection by `getPlatformKeyCombinations` (`:212-218`); display rendering by `constructKeyCombinationDisplay` (`:318+`) and `<Hotkey>` (`ui/components/hotkey.tsx:34-50`). Bindings are installed by `useKeyboardShortcuts` / `useDocBodyKeyboardShortcuts` via `tinykeys` on `window` in **capture** phase (`ui/components/keydown-binder.ts:18-52`, `:54-58`, capture at `:46`). User rebindings are persisted in `settings.hotKeyRegistry` (`insomnia-data/common-src/settings.ts:153`); the table below shows the shipped defaults.
 
 | Action | Windows/Linux | macOS | Source location |
 |---|---|---|---|
@@ -212,32 +212,32 @@ Edge cases:
 
 P0 — core request/response workflow:
 - Multi-method HTTP client with URL bar, method selector, send/cancel, delay and repeat options (`request-url-bar.tsx:260-298`).
-- Params/Headers/Body/Auth/Scripts/Docs editor tabs with KV and bulk modes (`request-pane.tsx:118-420`).
-- JSON, HTML, CSV, image, PDF, multipart, audio and raw response viewers with preview modes and large-response guards (`response-viewer.tsx:186-390`; `common/constants.ts:83-84`).
+- Params/Headers/Body/Auth/Scripts/Docs editor tabs with KV and bulk modes (`request-pane.tsx:118-420` (`TabPanel`s at `:191`, `:296`, `:299`, `:304`, `:333`, `:408`; bulk toggles at `:216-235`)).
+- JSON, HTML, CSV, image, PDF, multipart, audio and raw response viewers with preview modes and large-response guards (`response-viewer.tsx:186-392`; `common/constants.ts:83-84`).
 - Environment system: collection base/sub, project/global, private, vault secrets, inheritance and active-environment switching (`environment-picker.tsx`, `workspace-environments-edit-modal.tsx`).
-- Persisted tabs per organization with close/reopen/next/previous and delete-driven cleanup (`insomnia-tab-context.tsx:141-620`; `tab-list.tsx:240-257`).
-- Global command palette search across requests, collections and environments (`command-palette.tsx:51-59`).
-- Full global shortcut registry with per-platform defaults and user rebinding (`insomnia-data/common-src/hotkeys.ts:51-200`; `settings/shortcuts.tsx:30-133`).
+- Persisted tabs per organization with close/reopen/next/previous and delete-driven cleanup (`insomnia-tab-context.tsx:141-617`; `tab-list.tsx:239-257`).
+- Global command palette search across requests, collections and environments (`command-palette.tsx:51-57`).
+- Full global shortcut registry with per-platform defaults and user rebinding (`insomnia-data/common-src/hotkeys.ts:51-200`; `settings/shortcuts.tsx:30-151`).
 
 P1 — important workflows:
 - Resizable request/response split with autosaved sizes and responsive vertical layout (`debug.tsx:454-493`).
-- URL query-string import, path-parameter editing, environment/VCS-aware editor remounting (`request-pane.tsx:58`, `:82-111`).
-- Response history with grouping, selection and request-version restore (`response-history-dropdown.tsx:101-269`).
+- URL query-string import, path-parameter editing, environment/VCS-aware editor remounting (`request-pane.tsx:58`, `:82`, `:103-116`).
+- Response history with grouping, selection and request-version restore (`response-history-dropdown.tsx:33-274`).
 - Response filtering persisted per request with 10-entry history (`response-pane.tsx:46-67`).
-- HAR and HTTP debug export, prettified/raw download (`preview-mode-dropdown.tsx:42-155`; `response-pane-utils.ts:27-68`).
-- Cookies and certificates modals from the pane header (`workspace-pane-header.tsx:143-167`; `modals/cookies-modal.tsx:62-120`).
-- Theme selection with OS auto-detect and plugin themes (`theme-panel.tsx:76-148`; `plugins/misc.ts:74-300`).
-- Settings modal with proxy, data import/export, plugins, credentials, scripting and AI tabs (`settings-modal.tsx:113-240`).
+- HAR and HTTP debug export, prettified/raw download (`preview-mode-dropdown.tsx:26-70`, `:133-162`; `response-pane-utils.ts:6-73`).
+- Cookies and certificates modals from the pane header (`workspace-pane-header.tsx:132-171`; `modals/cookies-modal.tsx:62-126`).
+- Theme selection with OS auto-detect and plugin themes (`theme-panel.tsx:76-155`; `plugins/misc.ts:74-300`).
+- Settings modal with proxy, data import/export, plugins, credentials, scripting and AI tabs (`settings-modal.tsx:111-240`).
 - CodeMirror undo/scroll persistence across remounts (`editor-state-cache.ts:32-64`).
-- Sidebar filtering, focus mode, pinned requests and drag-and-drop reordering (`project-navigation-sidebar.tsx:112-159`, `:524-540`; `use-sidebar-drag-and-drop.tsx:12-20`).
-- Deep-link handling for imports, plugin installs and OAuth (`root.tsx:105-720`).
+- Sidebar filtering, focus mode, pinned requests and drag-and-drop reordering (`project-navigation-sidebar.tsx:112-159`, `:525-541`; `use-sidebar-drag-and-drop.tsx:14-16`, `:599`).
+- Deep-link handling for imports, plugin installs and OAuth (`root.tsx:105`, `:448-745`).
 
 P2 — secondary/polish:
-- GraphQL explorer with its own filter shortcut (`graph-ql-explorer.tsx:136-140`).
+- GraphQL explorer with its own filter shortcut (`graph-ql-explorer.tsx:136-149`).
 - MCP pane with persisted list filter (`mcp-pane.tsx:96`).
-- Mock server panes and route editing (`...mock-server.tsx`, `mocks/mock-url-bar.tsx:38-44`).
+- Mock server panes and route editing (`...mock-server.tsx`, `mocks/mock-url-bar.tsx:38-47`).
 - Legacy unit-test pane and runner pane (`...test.tsx:117-121`; `debug.runner.tsx:509-515`).
 - Tutorial panel mode that hides chrome (`debug.tsx:481-483`).
 - "Always show large responses" session-level toggle (`response-viewer.tsx:36`, `:115`).
-- Keyboard shortcut display components and "Not defined" fallback (`hotkey.tsx:37-47`).
+- Keyboard shortcut display components and "Not defined" fallback (`hotkey.tsx:34-50`).
 - Native context menus for tabs (`tab.tsx:113-120`).

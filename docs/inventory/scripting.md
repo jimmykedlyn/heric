@@ -276,7 +276,7 @@ and `VariableList.toObject` / `isVariableList` (`variables.ts:114-140`).
 
 `RequestBody` (`request.ts:137-226`): fields `mode` (`undefined | formdata | urlencoded | raw | file | graphql`),
 `file`, `formdata`, `graphql`, `raw`, `urlencoded`, `options`; methods `isEmpty()` (`:162`),
-`toString()` (`:197`), `update(opts)` (`:216`). `FormParam` (`request.ts:43-81`) is a `Property`
+`toString()` (`:185-212`), `update(opts)` (`:216`). `FormParam` (`request.ts:43-81`) is a `Property`
 with `key`, `value`, `type`.
 
 `Header` (`packages/insomnia-scripting-environment/src/objects/headers.ts`): `key`, `value`,

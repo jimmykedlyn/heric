@@ -6,7 +6,7 @@ Baseline fact: **there is no database schema version field.** Searches for `dbVe
 
 ## Storage engine
 
-**Engine.** NeDB, `"@seald-io/nedb": "^4.1.1"` (`packages/insomnia-data/package.json:38`), resolved to 4.1.2 (`package-lock.json:6977-6990`). One datafile per collection; no indexes other than `_id`. **P0**
+**Engine.** NeDB, `"@seald-io/nedb": "^4.1.1"` (`packages/insomnia-data/package.json:38`), resolved to 4.1.2 (`package-lock.json:6977-6985`). One datafile per collection; app code declares no indexes beyond NeDB's `_id`. **P0**
 
 **Factory and closure state.** `createNedbDatabase(wrapper?)` at `packages/insomnia-data/node-src/database/database-nedb.ts:47`. Mutable closure state: `nedbBucket` (`:50`), `bufferingChanges = false` (`:55`), `bufferChangesId = 1` (`:56`), `changeBuffer = []` (`:58`), `changeListeners = []` (`:60`). `bufferChangesId` starts at 1, so flush id `0` is the "flush everything" sentinel. **P0**
 
@@ -42,7 +42,7 @@ Baseline fact: **there is no database schema version field.** Searches for `dbVe
 - `<dataPath>/insomnia.<Type>.db` — the 44 NeDB datafiles. **P0**
 - `<dataPath>/localStorage/<key>` — one small file per key (see electron-storage below). **P1**
 - `<dataPath>/responses/<id>.response` — raw HTTP bodies, written by `packages/insomnia/src/main/network/libcurl-promise.ts:111`. **P1**
-- `<dataPath>/responses/<id>.timeline` — timeline JSON, via `packages/insomnia/src/main/ipc/main.ts:157-220`. **P2**
+- `<dataPath>/responses/<id>.timeline` — timeline JSON, appended by `appendToTimeline` at `packages/insomnia/src/main/ipc/main.ts:208-220`. **P2**
 - `<dataPath>/backups/<version>/insomnia.*.db` — pre-upgrade snapshots (`packages/insomnia/src/main/backup.ts:39-61`). **P1**
 - `<dataPath>/version-control/git/<repoSlug>/` — managed git repos; working tree at repo root, git metadata in `.git/` (`packages/insomnia/src/main/git-service.ts:400-402`, `:438-471`). **P1**
 - Feature folders created lazily via `readOrCreateDataDir` (`packages/insomnia/src/main/ipc/main.ts:652-660`, which `mkdir -p`s under `app.getPath('userData')`); used for plugins and LLM configs. **P2**
@@ -51,7 +51,7 @@ Baseline fact: **there is no database schema version field.** Searches for `dbVe
 
 **Git working tree.** Root holds `insomnia.<id>.yaml` (one per workspace), `.spectral.yaml` (project lint ruleset), and arbitrary user files; `.git/` holds git data. The workspace file name comes from `WorkspaceMeta.gitFilePath` when set, else `insomnia.<workspaceId>.yaml` (`packages/insomnia/src/sync/git/repo-file-watcher.ts:277-281`). Import-generated names are `<sanitizedName>-<workspaceId>.yaml` (`packages/insomnia/src/common/import.ts:695-699`), with path separators, `..`, and NUL stripped by `sanitizeGitFileNameSegment` (`import.ts:710-719`). **P1**
 
-**Legacy git content.** Older builds kept a `.insomnia/` directory of per-type YAML (`packages/insomnia/src/sync/git/git-vcs.ts:106`, `GIT_INSOMNIA_DIR_NAME = '.insomnia'`); the overlay is `packages/insomnia/src/sync/git/ne-db-client.ts:190-228`, enumerating 15 syncable types as `<Type>/<id>.yml`. A reader opening an old repo must handle both layouts; conversion is `importLegacyInsomniaFolder` (`git-service.ts:1188-1311`), with layout notes at `git-service.ts:1165-1186`. **P0**
+**Legacy git content.** Older builds kept a `.insomnia/` directory of per-type YAML (`packages/insomnia/src/sync/git/git-vcs.ts:106`, `GIT_INSOMNIA_DIR_NAME = '.insomnia'`); the overlay is `packages/insomnia/src/sync/git/ne-db-client.ts:190-228`, enumerating 16 syncable types as `<Type>/<id>.yml`. A reader opening an old repo must handle both layouts; conversion is `importLegacyInsomniaFolder` (`git-service.ts:1188-1311`), with layout notes at `git-service.ts:1165-1186`. **P0**
 
 **Read guards.** `packages/insomnia/src/main/secure-read-file.ts:50` refuses paths matching `/^insomnia\..+\.db.*$/i` (templates and plugins cannot read the datafiles); only `responses` and `version-control` subdirectories are allowed (`:36`); hard-link aliases are rejected by comparing device plus inode (`:61-76`). **P1**
 
@@ -65,7 +65,7 @@ Baseline fact: **there is no database schema version field.** Searches for `dbVe
 
 **Flush.** `flushChangesImpl(id = 0, fake = false)` (`database-nedb.ts:63-88`): returns early when `id !== 0 && bufferChangesId !== id`; sets `bufferingChanges = false`; copies and clears `changeBuffer`; when `fake` is true logs and drops the events without notifying; otherwise awaits every change listener sequentially and returns the collected changes. In the main process the listener broadcasts them to all windows as `db.changes` (`packages/insomnia/src/main/database.main.ts:26-36`). **P1**
 
-**Immediate notifications.** `notifyOfChange` (`database-nedb.ts:612-622`) flushes immediately when `bufferingChanges` is false; otherwise events accumulate. Individual operations also call `onChange` listeners directly for inserts and removals (`:450-452`, `:455-505`). **P1**
+**Immediate notifications.** `notifyOfChange` (`database-nedb.ts:612-622`) flushes immediately when `bufferingChanges` is false; otherwise events accumulate. Insert and remove paths feed the same buffer through `notifyOfChange` (`database-nedb.ts:443-448`, `:455-505`); `onChange` (`:450-452`) only registers a listener and never fires it. **P1**
 
 **Mutation primitives.**
 - `insert` (`:443-448`).
@@ -76,21 +76,21 @@ Baseline fact: **there is no database schema version field.** Searches for `dbVe
 - `remove` (`:455-478`) and `removeWhere` (`:480-505`) call NeDB `remove` **without awaiting it**, then notify per document; `unsafeRemove` (`:508-511`) exists for bypassing listeners.
 - `getWithDescendants` (`:559-607`) and `withAncestors` (`:521-551`) walk the parent tree in memory.
 
-**Timestamps.** Defaults are `{ ... modified: Date.now(), created: Date.now() }` plus model `init()` (`packages/insomnia-data/node-src/database/init-model/index.ts:23-34`). `modified` is load-bearing for git sync: it survives migration and drives the "DB newer than disk" check. **P1**
+**Timestamps.** Defaults are `{ ... modified: Date.now(), created: Date.now() }` plus model `init()` (`packages/insomnia-data/node-src/database/init-model/index.ts:23-33`). `modified` is load-bearing for git sync: it survives migration and drives the "DB newer than disk" check. **P1**
 
 **Startup init.** `init` (`database-nedb.ts:242-441`) clears listeners and the bucket on `forceReset`, constructs all datafiles (`:257-434`), and then runs `await repairDatabase()` unless `inMemoryOnly` (`:438-440`). The source carries a NOTE/TODO that this can hang tests; it is not gated on the autoload promise. **P1**
 
 **No compaction.** App code never calls NeDB compaction APIs and never supplies persistence hooks; datafiles grow append-only between NeDB-internal rewrites. Any Rust writer that appends lines must be validated against real datafiles rather than assumed. **P1**
 
-**Electron key-value store.** `packages/insomnia/src/main/electron-storage.ts` stores one file per key under `<dataPath>/localStorage`, validates keys (`:87-93`), debounces writes per key by 100 ms (`:39-44`), and writes synchronously (`:95-115`). It backs window bounds/zoom, the git-credentials migration flag, and secrets. `packages/insomnia/src/main/ipc/secret-storage.ts:54-72` encrypts via Electron `safeStorage` to hex with a plaintext fallback when encryption is unavailable. **P1**
+**Electron key-value store.** `packages/insomnia/src/main/electron-storage.ts` stores one file per key under `<dataPath>/localStorage`, validates keys (`:87-93`), debounces writes per key by 100 ms (`:39-44`), and writes synchronously (`:95-113`). It backs window bounds/zoom, the git-credentials migration flag, and secrets. `packages/insomnia/src/main/ipc/secret-storage.ts:53-73` encrypts via Electron `safeStorage` to hex with a plaintext fallback when encryption is unavailable. **P1**
 
 **Backup and restore.** `packages/insomnia/src/main/backup.ts:13-37` compares the running version with `<dataPath>/backups`; `backup()` (`:39-61`) copies only `*.db` files into `backups/<version>`. `restoreBackup(version)` (`:63-90`) validates the path with `assertPathWithinDir`, copies files via an un-awaited `files.forEach(async ...)`, then relaunches. Edge cases: `responses/`, `localStorage/`, and `version-control/` are not backed up or restored; the relaunch can occur before the copy finishes. **P1**
 
-**Git sync write path.** `RepoFileWatcher` (header comment `packages/insomnia/src/sync/git/repo-file-watcher.ts:1-38`) runs one serial queue with two pipelines: FS→DB (`fs.watch` plus 10 s polling, `:56-57`) and DB→FS (`db.onChange`, 300 ms debounce). Loop prevention uses SHA-256 of written content in `lastWrittenHash` plus an mtime fast path (`:26-38`). On startup, `flushNewerDbWorkspacesToDisk` (`:272-330`) compares the max `modified` of each workspace tree against the YAML file mtime and rewrites disk when the DB is newer, recording the hash so the subsequent import scan skips it. Edge cases: the comparison is clock-based, and file mtime is recorded as `Date.now() + 1` (`:319`). **P1**
+**Git sync write path.** `RepoFileWatcher` (header comment `packages/insomnia/src/sync/git/repo-file-watcher.ts:1-38`) runs one serial queue with two pipelines: FS→DB (`fs.watch` plus 10 s polling, `:56-57`) and DB→FS (`db.onChange`, 300 ms debounce). Loop prevention uses SHA-256 of written content in `lastWrittenHash` plus an mtime fast path (`:26-38`). On startup, `flushNewerDbWorkspacesToDisk` (`:272-340`) compares the max `modified` of each workspace tree against the YAML file mtime and rewrites disk when the DB is newer, recording the hash so the subsequent import scan skips it. Edge cases: the comparison is clock-based, and file mtime is recorded as `Date.now() + 1` (`:319`). **P1**
 
-**Inbound import.** `upsertDocs` (`repo-file-watcher.ts:920-949`) buffers changes, forces the workspace `parentId` to the project id (`:933`), updates `WorkspaceMeta.gitFilePath` and `gitFileLastSyncTime` (`:934-938`), then updates each document and flushes. `deleteOrphans` (`:901-917`) removes documents present in the DB but absent from the YAML, restricted to `models.canSync`. Deleting a YAML file removes the mapped workspace and all descendants (`:960-1001`). **P1**
+**Inbound import.** `upsertDocs` (`repo-file-watcher.ts:920-949`) buffers changes, forces the workspace `parentId` to the project id (`:933`), updates `WorkspaceMeta.gitFilePath` and `gitFileLastSyncTime` (`:934-938`), then updates each document and flushes. `deleteOrphans` (`:901-917`) removes documents present in the DB but absent from the YAML, restricted to `models.canSync`. Deleting a YAML file removes the mapped workspace and all descendants (`:960-1000`). **P1**
 
-**Identifier invariants.** Base environments get a deterministic id `${prefix}_${sha1(parentId)}` (`packages/insomnia-data/node-src/services/environment.ts:76-105`) so sync never duplicates them. Special ids exist for scratchpads and organizations: `wrk_scratchpad` (`models/workspace.ts`), `proj_scratchpad` and `EMPTY_GIT_PROJECT_ID = 'empty'` (`models/project.ts`), `org_scratchpad` and `org_konnect_<accountId>` (`models/organization.ts`). `gr_`-prefixed git repository ids are encoded/decoded by helpers in `models/project.ts`. **P1**
+**Identifier invariants.** Base environments get a deterministic id `${prefix}_${sha1(parentId)}` (`packages/insomnia-data/node-src/services/environment.ts:76-105`) so sync never duplicates them. Special ids exist for scratchpads and organizations: `wrk_scratchpad` (`packages/insomnia-data/src/models/workspace.ts:12`), `proj_scratchpad` and `EMPTY_GIT_PROJECT_ID = 'empty'` (`packages/insomnia-data/src/models/project.ts:12`, `:15`), `org_scratchpad` and `org_konnect_<accountId>` (`packages/insomnia-data/src/models/organization.ts:3`, `:6`). `gr_`-prefixed git repository ids are encoded/decoded by helpers in `packages/insomnia-data/src/models/project.ts:21`, `:28`, `:45`. **P1**
 
 ## Migrations
 
@@ -98,7 +98,7 @@ Ordered by when they take effect: per-read document migrations first, then start
 
 | Version | What it does | Source location |
 |---|---|---|
-| none (every read/write) | `initModel` builds defaults, generates `_id`, dispatches per-type `migrate`, then prunes any key not in defaults or `optionalKeys` | `packages/insomnia-data/node-src/database/init-model/index.ts:23-34`, `:37-39`, `:44-68`, `:72-78` |
+| none (every read/write) | `initModel` builds defaults, generates `_id`, dispatches per-type `migrate`, then prunes any key not in defaults or `optionalKeys` | `packages/insomnia-data/node-src/database/init-model/index.ts:23-33`, `:37-39`, `:44-68`, `:72-78` |
 | none | Workspace: extract legacy `certificates[]` into ClientCertificate docs and delete the field | `packages/insomnia-data/node-src/database/init-model/workspace.ts:21-45` |
 | none | Workspace: force a string `name` ("My Workspace" when invalid) | `workspace.ts:52-58` |
 | none | Workspace: scope `designer`/`spec` to `design`, unset/other to `collection` | `workspace.ts:67-83` |
@@ -113,7 +113,7 @@ Ordered by when they take effect: per-read document migrations first, then start
 | none (startup) | `repairDatabase`: project sync flags, ApiSpec-name fix (skips no-op writes to avoid restamping `modified`), base-environment repair, multiple cookie jars, old git URIs | `packages/insomnia-data/node-src/database/repair-database.ts:13-17`, `:35-45`, `:52-87`, `:94-126`, `:129-141` |
 | none (startup) | Git credentials unification (GitHub/GitLab/custom into one model), idempotent, gated by an electron-storage migration flag | `packages/insomnia/src/main/git/migrations.ts:35-44`, `:46-204`, `:210-228` |
 | none (startup) | Pre-upgrade backup at `backups/<version>` when the app version is newer than the newest backup | `packages/insomnia/src/main/backup.ts:13-61`; sequence in `packages/insomnia/src/entry.main.ts:143-168` |
-| repoMigrationVersion = 1 | Git repo layout: `.insomnia/<Type>/<id>.yml` plus `git/` to root-level YAML plus `.git/`; stamp stored on `GitRepository`, with an on-disk override for already-migrated repos | `packages/insomnia/src/sync/git/git-migration-version.ts:5`; `packages/insomnia/src/sync/git/git-repo-migration.ts:56-66`, `:70`, `:200-285`, `:292-390`; gate `packages/insomnia/src/ui/utils/router.ts:105`; batch runner `packages/insomnia/src/main/git-service.ts:4003-4092` |
+| repoMigrationVersion = 1 | Git repo layout: `.insomnia/<Type>/<id>.yml` plus `git/` to root-level YAML plus `.git/`; stamp stored on `GitRepository`, with an on-disk override for already-migrated repos | `packages/insomnia/src/sync/git/git-migration-version.ts:5`; `packages/insomnia/src/sync/git/git-repo-migration.ts:56-66`, `:70`, `:200-285`, `:292-395`; gate `packages/insomnia/src/ui/utils/router.ts:105`; batch runner `packages/insomnia/src/main/git-service.ts:4003-4092` |
 | none (post-migration) | Backfill managed git folder slugs for existing repos | `packages/insomnia/src/main/git-service.ts:518`, `:3968-3995` |
 | none | Import legacy `.insomnia` folder layout into the new repo structure | `packages/insomnia/src/main/git-service.ts:1188-1311`; detection `:1313-1325`; layout notes `:1165-1186` |
 | 5.0 → 5.1 | YAML schema upgrade applied before Zod parse: `cleanHeadersAndParameters` and script normalization; property order normalized | `packages/insomnia/src/common/insomnia-schema-migrations/schema-version.ts:19`; `.../index.ts:16-26`, `:32-40`, `:43-49`, `:60-96`, `:102-120`, `:130-187`; `.../v5.1.ts:30-53`, `:67-166`; applied at `packages/insomnia/src/common/insomnia-v5.ts:937-982` |
@@ -122,7 +122,7 @@ Ordered by when they take effect: per-read document migrations first, then start
 | none | Konnect organization migration, buffered, query needs `$exists` plus `$ne` | `packages/insomnia/src/konnect/migrate-konnect-organization.ts:44-47`, `:125-131` |
 | none | Stats tracking `currentVersion`/`lastVersion` (telemetry, not data shape) | `packages/insomnia/src/entry.main.ts:405-468` |
 
-YAML exports stamp `schema_version: '5.1'` at `packages/insomnia/src/common/insomnia-v5.ts:1021`, `:1436`, `:1465`, `:1498`, `:1515`, `:1538`. The v5 file discriminator is a union of five file types (`packages/insomnia/src/common/import-v5-parser.ts:488-495`); per-file schemas default `schema_version` to `5.0` (`:437`, `:450`, `:463`, `:472`, `:481`), and `mcpClient` deliberately uses `mcpClient.insomnia/5.0` (`:478-486`). Diffing and change reports ignore or relegate `schema_version` (`common/significant-diff-detection.ts`, `common/insomnia-v5-change-report.ts`).
+YAML exports stamp `schema_version: '5.1'` at `packages/insomnia/src/common/insomnia-v5.ts:1021`, `:1436`, `:1465`, `:1498`, `:1515`, `:1538`. The v5 file discriminator is a union of five file types (`packages/insomnia/src/common/import-v5-parser.ts:488-495`); each per-file schema declares `schema_version` as optional and defaults it to `INSOMNIA_SCHEMA_VERSION` (`:437`, `:450`, `:463`, `:472`, `:481`), while the pre-Zod migration layer treats a missing version as `5.0` (`insomnia-schema-migrations/index.ts:32-40`), and `mcpClient` deliberately uses `mcpClient.insomnia/5.0` (`:478-486`). Diffing and change reports ignore or relegate `schema_version` (`common/significant-diff-detection.ts`, `common/insomnia-v5-change-report.ts`).
 
 ## Import/migration risks for a Rust reader
 
@@ -130,11 +130,11 @@ YAML exports stamp `schema_version: '5.1'` at `packages/insomnia/src/common/inso
 
 **Silent field pruning.** Any key not in the model defaults and not listed in `optionalKeys` is deleted on read (`init-model/index.ts:72-78`). If Heric writes a document back with a stale model definition, newer Insomnia fields are lost. Conversely, Heric must accept `optionalKeys` fields without pruning them. **P0**
 
-**`modified` is semantic.** `docUpdate` restamps `modified` (`database-nedb.ts:132-145`); the watcher compares max `modified` against file mtime to decide which side wins (`repo-file-watcher.ts:272-330`). A Rust writer that touches `modified` gratuitously causes spurious YAML rewrites and git diffs; one that fails to set it can lose edits on upgrade/downgrade. **P1**
+**`modified` is semantic.** `docUpdate` restamps `modified` (`database-nedb.ts:132-145`); the watcher compares max `modified` against file mtime to decide which side wins (`repo-file-watcher.ts:272-340`). A Rust writer that touches `modified` gratuitously causes spurious YAML rewrites and git diffs; one that fails to set it can lose edits on upgrade/downgrade. **P1**
 
 **Whole-document update.** `update` upserts the full object (`database-nedb.ts:513-518`); partial updates only happen through `docUpdate`. A Rust implementation using SQL-style partial updates must not assume merge semantics. **P1**
 
-**Deletes are fire-and-forget.** `remove`/`removeWhere` do not await NeDB removal (`database-nedb.ts:455-505`), so a crash or immediate read can observe the document. Deletion is also how YAML removal propagates: deleting a workspace YAML deletes the workspace and descendants (`repo-file-watcher.ts:960-1001`), and inbound import removes any syncable doc missing from the YAML (`:901-917`). **P1**
+**Deletes are fire-and-forget.** `remove`/`removeWhere` do not await NeDB removal (`database-nedb.ts:455-478`, `:480-505`, `:508-511`), so a crash or immediate read can observe the document. Deletion is also how YAML removal propagates: deleting a workspace YAML deletes the workspace and descendants (`repo-file-watcher.ts:960-1000`), and inbound import removes any syncable doc missing from the YAML (`:901-917`). **P1**
 
 **Unbound buffer timer.** `bufferChanges` schedules `setTimeout(database.flushChanges, millis)` (`database-nedb.ts:103-107`), so the flush id is `0` and flushes every buffer. Nested batching does not isolate; only explicit `flushChanges(id)` does. **P2**
 
@@ -148,7 +148,7 @@ YAML exports stamp `schema_version: '5.1'` at `packages/insomnia/src/common/inso
 
 **Workspace file naming is metadata-driven.** `WorkspaceMeta.gitFilePath` overrides the default `insomnia.<id>.yaml` (`repo-file-watcher.ts:277-281`); imports produce `<name>-<id>.yaml` with a sanitizer (`import.ts:695-719`). A Rust reader must join this value safely against the repo root and treat it as authoritative for rename/delete detection. **P0**
 
-**YAML schema is versioned and reordered.** Files declare `schema_version`; missing values default to `5.0` (`import-v5-parser.ts:437-481`); `5.1` normalization changes header/parameter and script shapes and sorts property order (`insomnia-schema-migrations/index.ts:130-187`). Writing without the same normalization produces noisy diffs and may fail Zod validation on re-import. **P1**
+**YAML schema is versioned and reordered.** Files declare `schema_version`; a missing value is treated as `5.0` by `getVersionFromParsed` before parsing (`insomnia-schema-migrations/index.ts:32-40`); `5.1` normalization changes header/parameter and script shapes and sorts property order (`insomnia-schema-migrations/index.ts:130-187`). Writing without the same normalization produces noisy diffs and may fail Zod validation on re-import. **P1**
 
 **Importers are versioned by `__export_format`.** Only formats 1-4 plus v5 YAML are recognized (`packages/insomnia/src/main/importers/convert.ts:29-68`); unknown formats must be rejected rather than guessed. **P1**
 
@@ -167,16 +167,16 @@ YAML exports stamp `schema_version: '5.1'` at `packages/insomnia/src/common/inso
 | Change buffering and broadcast | buffer/indefinite/flush/fake flush, `db.changes` to all windows | P1 | `database-nedb.ts:63-113`, `:612-622`; `database.main.ts:26-36` |
 | Read-time document migrations | per-type migrations plus key pruning on every read | P0 | `init-model/*.ts`; `init-model/index.ts:44-78` |
 | Startup repairs | project flags, ApiSpec name, base envs, cookie jars, git URIs | P1 | `repair-database.ts:13-141` |
-| YAML v5 export/import | `schema_version` 5.0/5.1, five file types, Zod validation, normalization | P0 | `common/insomnia-v5.ts`; `common/import-v5-parser.ts:420-495` |
+| YAML v5 export/import | `schema_version` 5.0/5.1, five file types, Zod validation, normalization | P0 | `common/insomnia-v5.ts`; `common/import-v5-parser.ts:435-495` |
 | YAML schema migration | 5.0 to 5.1 header/parameter/script cleanup and ordering | P1 | `common/insomnia-schema-migrations/*` |
 | Legacy export importers | `__export_format` 1-4 conversion | P1 | `main/importers/importers/insomnia-1..4.ts` |
-| Git repo structure migration | v1 layout, per-repo stamp, disk override, batch runner, slug backfill | P0 | `sync/git/git-repo-migration.ts`; `main/git-service.ts:4003-4092` |
+| Git repo structure migration | v1 layout, per-repo stamp, disk override, batch runner, slug backfill | P0 | `sync/git/git-repo-migration.ts:200-285`, `:292-395`; `main/git-service.ts:4003-4092` |
 | Legacy `.insomnia` folder import | old per-type YAML layout converted into current repos | P0 | `main/git-service.ts:1188-1325` |
-| Bidirectional repo sync | watcher, poll plus fs.watch, hash/mtime loop prevention, orphan deletion | P1 | `sync/git/repo-file-watcher.ts:1-100`, `:272-330`, `:901-1001` |
+| Bidirectional repo sync | watcher, poll plus fs.watch, hash/mtime loop prevention, orphan deletion | P1 | `sync/git/repo-file-watcher.ts:1-38`, `:272-340`, `:901-1000` |
 | Backup and restore | per-version DB snapshots, guarded restore, relaunch | P1 | `main/backup.ts:13-90` |
-| Response blob storage | `responses/<id>.response` and `.timeline`, 20-response retention | P1 | `main/network/libcurl-promise.ts:111`; `main/ipc/main.ts:157-220`; `services/response.ts:45-79` |
-| Electron key-value storage | one file per key under `localStorage/`, debounced sync writes | P1 | `main/electron-storage.ts:39-115` |
-| Secret storage | `safeStorage` encryption to hex with plaintext fallback | P2 | `main/ipc/secret-storage.ts:54-72` |
+| Response blob storage | `responses/<id>.response` and `.timeline`, 20-response retention | P1 | `main/network/libcurl-promise.ts:111`; `main/ipc/main.ts:208-220`; `services/response.ts:45-79` |
+| Electron key-value storage | one file per key under `localStorage/`, debounced sync writes | P1 | `main/electron-storage.ts:39-44`, `:87-93`, `:95-113` |
+| Secret storage | `safeStorage` encryption to hex with plaintext fallback | P2 | `main/ipc/secret-storage.ts:53-73` |
 | Git credential migration | one-time unification gated by a stored flag | P1 | `main/git/migrations.ts:35-228` |
 | Organization migrations | VCS projects into orgs; Konnect org migration | P2 | `sync/vcs/migrate-projects-into-organization.ts`; `konnect/migrate-konnect-organization.ts` |
 | Datafile read protection | block `insomnia.*.db` from templates/plugins, symlink/hard-link guards | P1 | `main/secure-read-file.ts:36-76` |
