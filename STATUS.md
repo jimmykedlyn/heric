@@ -32,31 +32,38 @@ Last update: 2026-11-10.
   `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps`.
 - The three mdBook sites build and the documentation structure check passes.
 - CI green on all eight jobs (Windows, Linux, both macOS targets, MSRV, lint,
-  docs, gitflow) on `develop` at `6f91892` and every merge since.
+  docs, gitflow) on `develop` at `0f1a665` and on every merge since.
 - Remote published at https://github.com/jimmykedlyn/Heric (public). Merged by
-  PR: `#6` bootstrap, `#7` gitflow fix, `#8` inventory, and the five
+  PR: `#6` bootstrap, `#7` gitflow gate fix, `#8` inventory, `#9` status
+  rewrite, `#12` parity matrix, `#93` docs site root links, and the five
   Dependabot actions bumps (`checkout` 4 to 7, `upload-artifact` 4 to 7,
   `configure-pages` 5 to 6, `upload-pages-artifact` 3 to 5, `deploy-pages`
   4 to 5).
-- GitHub Pages site deployed from `develop` (`Docs` workflow succeeded).
-- Labels created: `crate:*` for all 12 crates and both apps, `milestone:M1` to
-  `milestone:M7`, `parity`, `docs`, `i18n` and `platform:windows|linux|macos`.
+- GitHub Pages site deployed from `develop` under `/next`; the three language
+  books serve 200 and the root page's fallback links now carry the base prefix.
+- Labels created: `crate:*` for all 12 crates and both apps, `parity`, `docs`,
+  `i18n` and `platform:windows|linux|macos`; milestones M1 to M7.
 - Phase 0.3 inventory: twelve reports in `docs/inventory/`, 4,033 lines, with
   304 code citations all verified to resolve to an existing file and an
   in-range line in the read-only Insomnia tree.
+- `docs/inventory/FEATURES.md`, the parity matrix: 422 rows across 11 areas,
+  P0 183, P1 162, P2 77, each with owning crate, milestone, platform scope,
+  status and issue number. Twelve priority conflicts between reports are
+  recorded under Cross-cutting risks with the resolution taken.
+- All 345 P0/P1 rows have a GitHub issue, numbered `#13` to `#359`, labelled
+  `parity` plus `crate:<name>` and assigned to the milestone of the row.
 
 ## In progress
 
-- `docs/inventory/FEATURES.md`, the consolidated parity matrix, is being
-  assembled from the twelve reports.
-- The P0/P1 issues open once the matrix lands, one issue per item.
+- Nothing. Phase 0 is complete apart from the two approval-gated items below.
 
 ## Blocked
 
 - **Branch protection** for `main` and `develop` needs approval before the
   rules are written.
-- **Release rehearsal** (`release/0.0.1` → PR to `main` → tag → artifacts →
-  back-merge) needs approval before anything merges into `main`.
+- **Release rehearsal**: `release/0.0.1` → PR `#11` into `main` is open, green
+  on the eight checks and mergeable. Merging it and pushing the tag needs
+  approval.
 - **Deleting the rehearsal release and tag** needs approval after the run.
 
 ## Decisions taken
@@ -73,13 +80,15 @@ Last update: 2026-11-10.
 - Documentation i18n: `docs/adr/0002-docs-i18n.md`.
 - Dependabot branches are valid under the Gitflow gate as long as they target
   `develop`.
+- The parity matrix carries `Platforms`, `Status` and `Issue` columns so it is
+  the delivery checklist, not only an inventory; P2 rows stay issue-free until
+  a milestone schedules them.
 
 ## Next
 
-1. Finish `docs/inventory/FEATURES.md` and open one issue per P0/P1 item.
-2. Apply branch protection to `main` and `develop` with the eight published
+1. Apply branch protection to `main` and `develop` with the eight published
    check names, block force-push and deletion, require pull requests (after
    approval).
-3. Run the release rehearsal through `release/0.0.1`, then remove the test
-   release and tag after confirmation.
-4. Report Phase 0 results in Portuguese and wait for approval before Phase 1.
+2. Merge PR `#11`, tag the rehearsal release, check the artifacts, then remove
+   the test release and tag after confirmation.
+3. Report Phase 0 results in Portuguese and wait for approval before Phase 1.

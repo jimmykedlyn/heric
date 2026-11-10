@@ -24,7 +24,8 @@ feature parity and keeping compatibility with users' existing data.
 | 0.1 GitHub repository and settings | in progress | Remote public at `jimmykedlyn/Heric`; labels, templates and Dependabot configured. Branch protection still needs approval. |
 | 0.2 CI workflows | done | Eight jobs green on Windows, Linux, both macOS targets, MSRV, lint, docs and gitflow, on `develop` and on every PR since #6. |
 | 0.2 Release cycle rehearsal (`release/0.0.1`) | blocked | Branch and PR ready; merging into `main` and tagging need approval. |
-| 0.3 Inventory (12 subagents A-L) | done | Twelve reports in `docs/inventory/`, 4,033 lines, 304 citations verified. Consolidation into `FEATURES.md` is in progress; the per-item issues follow. |
+| 0.3 Inventory (12 subagents A-L) | done | Twelve reports in `docs/inventory/`, 4,033 lines, 304 citations verified. Merged in PR #8. |
+| 0.3 Parity matrix and per-item issues | done | `docs/inventory/FEATURES.md`: 422 rows (P0 183, P1 162, P2 77) across 11 areas, with platforms, status and issue number per row. Matrix merged in PR #12; all 345 P0/P1 rows have an issue (#13 to #359). |
 
 ## Phase 1 — architecture and contracts
 
