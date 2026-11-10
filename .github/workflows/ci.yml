@@ -22,7 +22,7 @@ jobs:
     name: lint (fmt, clippy, deny, rustdoc)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Linux desktop dependencies
         run: |
@@ -72,7 +72,7 @@ jobs:
             target: x86_64-apple-darwin
             build_only: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Linux desktop dependencies
         if: runner.os == 'Linux'
@@ -108,7 +108,7 @@ jobs:
     name: msrv
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Linux desktop dependencies
         run: |
@@ -137,7 +137,7 @@ jobs:
     name: docs (three languages)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: taiki-e/install-action@v2
         with:
@@ -155,8 +155,12 @@ jobs:
       - name: Check links
         uses: lycheeverse/lychee-action@v2
         with:
+          # mdBook writes a 404.html per book whose only link is the absolute
+          # path of the deployed site (/Heric/<lang>/), which cannot be
+          # resolved offline. Every other page is checked.
           args: >-
             --no-progress --offline --include-fragments
+            --exclude-path 404.html
             "$GITHUB_WORKSPACE/site"
           fail: true
 
@@ -165,7 +169,7 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Validate source and target branches
         run: bash scripts/check-gitflow.sh "${{ github.base_ref }}" "${{ github.head_ref }}"
