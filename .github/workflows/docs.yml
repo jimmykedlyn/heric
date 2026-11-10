@@ -61,9 +61,9 @@ jobs:
           </head>
           <body>
             <p>Redirecting. Choose a language:
-              <a href="en/">English</a> |
-              <a href="pt-BR/">Português</a> |
-              <a href="es/">Español</a>
+              <a href="${base}/en/">English</a> |
+              <a href="${base}/pt-BR/">Português</a> |
+              <a href="${base}/es/">Español</a>
             </p>
           </body>
           </html>
