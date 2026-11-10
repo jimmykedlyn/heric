@@ -20,11 +20,11 @@ feature parity and keeping compatibility with users' existing data.
 
 | Step | Status | Notes |
 |---|---|---|
-| 0.1 Workspace skeleton and root files | done | Local scaffold, validated by the quality gates. |
-| 0.1 GitHub repository and settings | blocked | Remote exists at `jimmykedlyn/Heric`; `gh` token needs refresh for push, branch protection, labels and milestones. |
-| 0.2 CI workflows | in progress | `ci.yml`, `release.yml`, `docs.yml`, dependabot and templates written; must be green on the three platforms before the PR closes. |
-| 0.2 Release cycle rehearsal (`release/0.0.1`) | blocked | Needs the remote and a working `gh` session. |
-| 0.3 Inventory (13 Explore subagents) | not started | Output in `docs/inventory/`, consolidated into `FEATURES.md` and one issue per P0/P1 item. |
+| 0.1 Workspace skeleton and root files | done | Local scaffold, validated by the quality gates. Merged in PR #6. |
+| 0.1 GitHub repository and settings | in progress | Remote public at `jimmykedlyn/Heric`; labels, templates and Dependabot configured. Branch protection still needs approval. |
+| 0.2 CI workflows | done | Eight jobs green on Windows, Linux, both macOS targets, MSRV, lint, docs and gitflow, on `develop` and on every PR since #6. |
+| 0.2 Release cycle rehearsal (`release/0.0.1`) | blocked | Branch and PR ready; merging into `main` and tagging need approval. |
+| 0.3 Inventory (12 subagents A-L) | done | Twelve reports in `docs/inventory/`, 4,033 lines, 304 citations verified. Consolidation into `FEATURES.md` is in progress; the per-item issues follow. |
 
 ## Phase 1 — architecture and contracts
 
