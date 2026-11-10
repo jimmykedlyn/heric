@@ -29,18 +29,18 @@ description = "Native API client in Rust and egui, compatible with Insomnia"
 
 [workspace.dependencies]
 # Workspace crates
-heric-auth = { path = "crates/heric-auth" }
-heric-codegen = { path = "crates/heric-codegen" }
-heric-core = { path = "crates/heric-core" }
-heric-git = { path = "crates/heric-git" }
-heric-http = { path = "crates/heric-http" }
-heric-import = { path = "crates/heric-import" }
-heric-model = { path = "crates/heric-model" }
-heric-openapi = { path = "crates/heric-openapi" }
-heric-protocols = { path = "crates/heric-protocols" }
-heric-script = { path = "crates/heric-script" }
-heric-storage = { path = "crates/heric-storage" }
-heric-template = { path = "crates/heric-template" }
+heric-auth = { version = "0.0.0", path = "crates/heric-auth" }
+heric-codegen = { version = "0.0.0", path = "crates/heric-codegen" }
+heric-core = { version = "0.0.0", path = "crates/heric-core" }
+heric-git = { version = "0.0.0", path = "crates/heric-git" }
+heric-http = { version = "0.0.0", path = "crates/heric-http" }
+heric-import = { version = "0.0.0", path = "crates/heric-import" }
+heric-model = { version = "0.0.0", path = "crates/heric-model" }
+heric-openapi = { version = "0.0.0", path = "crates/heric-openapi" }
+heric-protocols = { version = "0.0.0", path = "crates/heric-protocols" }
+heric-script = { version = "0.0.0", path = "crates/heric-script" }
+heric-storage = { version = "0.0.0", path = "crates/heric-storage" }
+heric-template = { version = "0.0.0", path = "crates/heric-template" }
 
 # External crates. Entries without a consumer yet are candidate dependencies
 # for the Phase 1 architecture; the final stack is decided by the ADRs in

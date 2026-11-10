@@ -8,6 +8,10 @@ targets = [
 ]
 
 [advisories]
+# Only flag crates that *we* depend on directly. Transitive unmaintained
+# crates pulled in by egui/accesskit (paste, ttf-parser, zbus, zvariant) are
+# upstream's responsibility and are tracked when egui updates.
+unmaintained = "workspace"
 yanked = "deny"
 ignore = []
 
@@ -18,9 +22,12 @@ allow = [
     "Apache-2.0 WITH LLVM-exception",
     "BSD-2-Clause",
     "BSD-3-Clause",
+    "BSL-1.0",
     "ISC",
     "Zlib",
     "MPL-2.0",
+    "OFL-1.1",
+    "Ubuntu-font-1.0",
     "Unicode-3.0",
     "Unicode-DFS-2016",
     "CC0-1.0",

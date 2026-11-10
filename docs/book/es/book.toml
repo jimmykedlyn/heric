@@ -12,6 +12,5 @@ create-missing = false
 [output.html]
 site-url = "/Heric/es/"
 git-repository-url = "https://github.com/jimmykedlyn/Heric"
-git-repository-icon = "fab fa-github"
 default-theme = "light"
 preferred-dark-theme = "navy"
