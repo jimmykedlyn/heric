@@ -74,14 +74,3 @@ pub trait BlobStore: Send + Sync {
 /// Mirrors [`crate::StoreHandle`]: `heric-core` holds trait objects, never the
 /// concrete implementation.
 pub type BlobStoreHandle = std::sync::Arc<dyn BlobStore>;
-
-/// Opens the blob store at the given paths, creating its directory if needed.
-///
-/// # Errors
-///
-/// Returns [`StorageError`] when the directory cannot be created or a blob
-/// cannot be read back.
-pub fn open(paths: &crate::DataPaths) -> Result<BlobStoreHandle, StorageError> {
-    let _ = paths;
-    todo!("M1: open the blob directory at paths.root/blobs")
-}

@@ -8,13 +8,15 @@
 #![deny(unsafe_code)]
 
 mod blob;
+mod blobs;
 mod error;
 mod migratedb;
 mod paths;
 mod sqlite;
 mod store;
 
-pub use blob::{BlobId, BlobStore, BlobStoreHandle, open as open_blobs};
+pub use blob::{BlobId, BlobRole, BlobStore, BlobStoreHandle};
+pub use blobs::{blob_path, is_datafile, open_blobs};
 pub use error::{StorageDiagnostic, StorageError};
 pub use heric_model::Change;
 pub use migratedb::{

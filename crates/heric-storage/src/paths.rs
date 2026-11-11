@@ -192,23 +192,17 @@ fn platform_candidates() -> Vec<PathBuf> {
 
 /// Whether `dir` is a directory holding at least one data file.
 ///
-/// See [`is_datafile`] for the name rule. This is the same rule the migration
-/// layer's data-file check will apply.
+/// See [`crate::is_datafile`] for the name rule. The entry's own file type is
+/// checked here because a directory can carry a datafile's name; the predicate
+/// itself stays lexical.
 fn holds_insomnia_database(dir: &Path) -> bool {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return false;
     };
     entries.flatten().any(|entry| {
         let is_file = entry.file_type().is_ok_and(|kind| kind.is_file());
-        is_file && entry.file_name().to_str().is_some_and(is_datafile)
+        is_file && crate::is_datafile(Path::new(&entry.file_name()))
     })
-}
-
-/// Whether `name` is `insomnia.<kind>.db` with a non-empty `<kind>`.
-fn is_datafile(name: &str) -> bool {
-    name.strip_prefix("insomnia.")
-        .and_then(|rest| rest.strip_suffix(".db"))
-        .is_some_and(|kind| !kind.is_empty())
 }
 
 #[cfg(test)]
@@ -349,17 +343,6 @@ mod tests {
         assert!(listing.contains(&first.display().to_string()), "{listing}");
         assert!(listing.contains(&second.display().to_string()), "{listing}");
         Ok(())
-    }
-
-    #[test]
-    fn the_datafile_name_rule_rejects_empty_and_misspelled_kinds() {
-        assert!(is_datafile("insomnia.Workspace.db"));
-        assert!(is_datafile("insomnia.WorkspaceMeta.db"));
-        assert!(!is_datafile("insomnia.db"));
-        assert!(!is_datafile("insomnia..db"));
-        assert!(!is_datafile("notes.db"));
-        assert!(!is_datafile("insomnia.Workspace.json"));
-        assert!(!is_datafile("insomnia.Workspace.db.bak"));
     }
 
     #[test]
