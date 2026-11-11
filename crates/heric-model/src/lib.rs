@@ -19,7 +19,7 @@ mod kind;
 mod wire;
 
 pub use diagnostic::{Diagnostic, MessageKey, MessageValue};
-pub use doc::{Change, Doc, DocMeta, Patch, PatchOp, Query, Request, Workspace};
+pub use doc::{Change, Doc, DocMeta, Order, Patch, PatchOp, Query, Request, Workspace};
 pub use error::ModelError;
 pub use id::Id;
 pub use kind::DocKind;

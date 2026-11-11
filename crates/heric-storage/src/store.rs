@@ -32,6 +32,35 @@ pub trait Store: Send + Sync {
     /// other variants when the write fails.
     fn insert(&self, doc: &Doc) -> Result<Doc, StorageError>;
 
+    /// Inserts a document or replaces the one with the same id, returning it as
+    /// stored.
+    ///
+    /// Wholesale replacement, which is what the original's `update` does: a
+    /// field the stored document has and `doc` does not is removed, not kept.
+    /// Partial updates go through [`Store::update`].
+    ///
+    /// The default implementation inserts, and on a duplicate turns the stored
+    /// copy into `doc` with a full-replacement patch, so an implementation
+    /// that can replace in one statement should override it. Because the
+    /// replacement goes through [`Store::update`], the returned document
+    /// carries the update's fresh `modified` rather than `doc`'s own.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorageError`] when the write fails.
+    fn upsert(&self, doc: &Doc) -> Result<Doc, StorageError> {
+        match self.insert(doc) {
+            Ok(inserted) => Ok(inserted),
+            Err(StorageError::DuplicateId(_)) => {
+                let stored = self
+                    .get(&doc.meta.id)?
+                    .ok_or_else(|| StorageError::NotFound(doc.meta.id.as_str().to_owned()))?;
+                self.update(&doc.meta.id, &replacement_patch(&stored, doc)?)
+            }
+            Err(error) => Err(error),
+        }
+    }
+
     /// Applies a patch and returns the updated document.
     ///
     /// # Errors
@@ -71,6 +100,44 @@ pub type StoreHandle = std::sync::Arc<dyn Store>;
 /// Returns [`StorageError`] when the directory cannot be created, the database
 /// cannot be opened, or the schema version is newer than this build supports.
 pub fn open(paths: &crate::DataPaths) -> Result<StoreHandle, StorageError> {
-    let _ = paths;
-    todo!("M1: open SQLite at paths.database, run migrations, return a handle")
+    std::fs::create_dir_all(&paths.root).map_err(|error| {
+        StorageError::Database(format!(
+            "cannot create the data directory {}: {error}",
+            paths.root.display()
+        ))
+    })?;
+    let store = crate::sqlite::SqliteStore::open(&paths.database())?;
+    Ok(std::sync::Arc::new(store))
+}
+
+/// The patch that turns `stored` into `doc`, field for field.
+///
+/// [`Store::update`] merges, so a wholesale replacement has to say which of the
+/// stored fields are gone as well as which changed. Every key is taken from the
+/// documents' JSON form, which is the same vocabulary a patch is written in.
+fn replacement_patch(stored: &Doc, doc: &Doc) -> Result<Patch, StorageError> {
+    let stored = object_of(stored)?;
+    let replacement = object_of(doc)?;
+
+    let mut patch = Patch::new();
+    for key in stored.keys() {
+        if !replacement.contains_key(key) {
+            patch = patch.unset(key.clone());
+        }
+    }
+    for (key, value) in &replacement {
+        patch = patch.set(key.clone(), value.clone());
+    }
+    Ok(patch)
+}
+
+/// A document as the flat object a patch addresses.
+fn object_of(doc: &Doc) -> Result<serde_json::Map<String, serde_json::Value>, StorageError> {
+    match serde_json::to_value(doc) {
+        Ok(serde_json::Value::Object(fields)) => Ok(fields),
+        Ok(_) => Err(StorageError::Database(
+            "a document must serialise to a JSON object".to_owned(),
+        )),
+        Err(error) => Err(StorageError::Database(error.to_string())),
+    }
 }

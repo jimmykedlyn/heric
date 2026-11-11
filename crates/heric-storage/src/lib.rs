@@ -11,6 +11,7 @@ mod blob;
 mod error;
 mod migratedb;
 mod paths;
+mod sqlite;
 mod store;
 
 pub use blob::{BlobId, BlobStore, BlobStoreHandle, open as open_blobs};

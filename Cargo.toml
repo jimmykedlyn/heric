@@ -60,8 +60,10 @@ keyring = "4.2.0"
 prost = "0.14.4"
 prost-reflect = "0.16.5"
 rquickjs = "0.14.0"
+rusqlite = { version = "0.41.1", features = ["bundled"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
+tempfile = "3.27.0"
 thiserror = "2.0.21"
 tokio = { version = "1.54.1", features = ["macros", "rt-multi-thread", "sync"] }
 tokio-tungstenite = "0.30.0"
