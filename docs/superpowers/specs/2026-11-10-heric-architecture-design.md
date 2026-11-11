@@ -1006,3 +1006,7 @@ Decided here, on the owner's behalf, and open to challenge:
 15. Secrets the original kept as Electron `safeStorage` ciphertext are copied
     verbatim and marked pending re-entry, never decrypted (section 9,
     section 17).
+16. The GUI uses `egui`'s own panels and no docking crate, because
+    `egui_dock` 0.21.1 pins `egui` 0.36 against a 0.37 workspace and docking
+    has no parity row; `egui_tiles` 0.18 is the approved dock if draggable
+    splits become a requirement (ADR 0013).
