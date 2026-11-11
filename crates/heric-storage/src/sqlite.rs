@@ -9,6 +9,7 @@
 //! build has never heard of is stored exactly as it arrived. The meta columns
 //! are separate because they are what queries filter and sort on.
 
+use std::collections::HashSet;
 use std::path::Path;
 use std::sync::{Mutex, MutexGuard};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -137,7 +138,10 @@ impl Store for SqliteStore {
             ],
         );
         match result {
-            Ok(_) => Ok(doc.clone()),
+            Ok(_) => {
+                let _ = self.sender.send(Change::Created(doc.clone()));
+                Ok(doc.clone())
+            }
             Err(error) if is_duplicate_id(&error) => {
                 Err(StorageError::DuplicateId(doc.meta.id.as_str().to_owned()))
             }
@@ -170,23 +174,31 @@ impl Store for SqliteStore {
             )
             .map_err(database)?;
         transaction.commit().map_err(database)?;
+        let _ = self.sender.send(Change::Updated(updated.clone()));
         Ok(updated)
     }
 
-    /// Removes the document itself, returning its id.
+    /// Removes the document and every descendant, returning every id removed.
     ///
-    /// Descendants are not walked yet: that traversal, and the change
-    /// broadcast, belong to the task that completes removal.
+    /// Deleting a workspace deletes its folders, their requests and those
+    /// requests' responses in one transaction, so a caller never observes a
+    /// half-deleted tree. An id that is not stored removes nothing and reports
+    /// an empty list.
     fn remove(&self, id: &Id) -> Result<Vec<Id>, StorageError> {
-        let connection = self.lock()?;
-        let deleted = connection
-            .execute("DELETE FROM documents WHERE id = ?1", [id.as_str()])
-            .map_err(database)?;
-        Ok(if deleted == 0 {
-            Vec::new()
-        } else {
-            vec![id.clone()]
-        })
+        let mut connection = self.lock()?;
+        let transaction = connection.transaction().map_err(database)?;
+        let removed = descendant_ids(&transaction, id)?;
+        {
+            let mut delete = transaction
+                .prepare("DELETE FROM documents WHERE id = ?1")
+                .map_err(database)?;
+            for removed_id in &removed {
+                delete.execute([removed_id.as_str()]).map_err(database)?;
+            }
+        }
+        transaction.commit().map_err(database)?;
+        let _ = self.sender.send(Change::Removed(removed.clone()));
+        Ok(removed)
     }
 
     fn changes(&self) -> tokio::sync::broadcast::Receiver<Change> {
@@ -288,6 +300,51 @@ fn read_document(connection: &Connection, id: &Id) -> Result<Option<Doc>, Storag
         )
         .optional()
         .map_err(database)
+}
+
+/// Collects the id and every descendant of it, breadth-first.
+///
+/// One query per level rather than a recursive CTE, because the walk runs
+/// inside the delete's transaction and the depth of a workspace tree is small.
+/// The id set also guards against a parent cycle in data this application did
+/// not write, which would otherwise walk forever.
+fn descendant_ids(connection: &Connection, id: &Id) -> Result<Vec<Id>, StorageError> {
+    let exists = connection
+        .query_row(
+            "SELECT 1 FROM documents WHERE id = ?1",
+            [id.as_str()],
+            |_| Ok(()),
+        )
+        .optional()
+        .map_err(database)?
+        .is_some();
+    if !exists {
+        return Ok(Vec::new());
+    }
+
+    let mut removed = vec![id.clone()];
+    let mut seen: HashSet<Id> = removed.iter().cloned().collect();
+    let mut frontier = vec![id.clone()];
+    let mut statement = connection
+        .prepare("SELECT id FROM documents WHERE parent = ?1")
+        .map_err(database)?;
+    while !frontier.is_empty() {
+        let mut next = Vec::new();
+        for parent in &frontier {
+            let rows = statement
+                .query_map([parent.as_str()], |row| row.get::<_, String>(0))
+                .map_err(database)?;
+            for row in rows {
+                let child = Id::new(row.map_err(database)?);
+                if seen.insert(child.clone()) {
+                    removed.push(child.clone());
+                    next.push(child);
+                }
+            }
+        }
+        frontier = next;
+    }
+    Ok(removed)
 }
 
 /// Rebuilds a document from the columns a row selected with
@@ -453,6 +510,27 @@ mod tests {
             },
             body: serde_json::Map::new(),
         }
+    }
+
+    fn workspace_doc(id: &str) -> Doc {
+        document(id, DocKind::Workspace, None, 0, 0)
+    }
+
+    /// A folder is a request group: the original's folder type has no
+    /// separate kind.
+    fn folder_doc(id: &str, parent: &str) -> Doc {
+        document(id, DocKind::RequestGroup, Some(parent), 0, 0)
+    }
+
+    fn request_doc_at(id: &str, parent: &str) -> Doc {
+        let mut doc = request_doc();
+        doc.meta.id = Id::new(id);
+        doc.meta.parent = Some(Id::new(parent));
+        doc
+    }
+
+    fn response_doc(id: &str, parent: &str) -> Doc {
+        document(id, DocKind::Response, Some(parent), 0, 0)
     }
 
     #[test]
@@ -638,6 +716,48 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["req_c", "req_a"]
         );
+        Ok(())
+    }
+
+    #[test]
+    fn removing_a_workspace_returns_every_descendant_id() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let store = ephemeral()?;
+        store.insert(&workspace_doc("wrk_1"))?;
+        store.insert(&folder_doc("fld_1", "wrk_1"))?;
+        store.insert(&request_doc_at("req_1", "fld_1"))?;
+        store.insert(&response_doc("res_1", "req_1"))?;
+        let mut removed = store.remove(&Id::new("wrk_1"))?;
+        removed.sort_by(|a, b| a.as_str().cmp(b.as_str()));
+        assert_eq!(
+            removed.iter().map(Id::as_str).collect::<Vec<_>>(),
+            ["fld_1", "req_1", "res_1", "wrk_1"]
+        );
+        assert!(store.get(&Id::new("req_1"))?.is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn a_removal_emits_one_change_listing_every_id() -> Result<(), Box<dyn std::error::Error>> {
+        let store = ephemeral()?;
+        let mut rx = store.changes();
+        store.insert(&workspace_doc("wrk_1"))?;
+        let _ = rx.try_recv()?;
+        let removed = store.remove(&Id::new("wrk_1"))?;
+        let Change::Removed(ids) = rx.try_recv()? else {
+            return Err("expected Removed".into());
+        };
+        assert_eq!(ids.len(), removed.len());
+        Ok(())
+    }
+
+    #[test]
+    fn a_lagging_subscriber_never_blocks_a_writer() -> Result<(), Box<dyn std::error::Error>> {
+        let store = ephemeral()?;
+        let _rx = store.changes(); // never drained
+        for index in 0..2000 {
+            store.insert(&workspace_doc(&format!("wrk_{index}")))?;
+        }
         Ok(())
     }
 
