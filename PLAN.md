@@ -77,6 +77,11 @@ apps/
 | M6 | codegen, Git sync, Design mode, full CLI | v0.6.0 |
 | M7 | UI polish, performance, icons, installers, complete docs in three languages | v1.0.0 |
 
+M1 is planned in `docs/plans/M1-first-request.md`: 22 tasks covering the 57
+M1 rows of `docs/inventory/FEATURES.md`, the SQLite store, the blob store, the
+Liquid renderer, the libcurl engine and the first end-to-end send. Each later
+milestone gets its own plan by the same process.
+
 ## Process per milestone
 
 1. `superpowers:writing-plans` produces `docs/plans/MN-<name>.md` and it is
