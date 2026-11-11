@@ -72,7 +72,17 @@ Last update: 2026-11-10.
 
 ## In progress
 
-- Nothing. Phase 0 is complete; Phase 1 starts after the owner's review.
+- Phase 1 on `feature/architecture`, branched from `develop`:
+  - Brainstorming with the owner closed four decisions (secrets copied as
+    ciphertext with pending re-entry, dedicated Intel and Silicon macOS
+    runners, `curl` as the engine, a Heric-owned data directory).
+  - The architecture design is approved; ADRs 0001–0013 exist and 0010 is the
+    only one still *proposed*.
+  - The twelve library crates carry their public contracts with `todo!()`
+    bodies. `heric-core` wires them and owns the concurrency model.
+  - `apps/gui` owns the event bridge, drains it once per frame and renders a
+    console; `apps/cli` exposes the full subcommand surface.
+  - Remaining: the quality gates and the PR to `develop`.
 
 ## Blocked
 
@@ -82,7 +92,11 @@ Last update: 2026-11-10.
 
 - Package and binary naming: crate `heric` (GUI binary `heric`), crate
   `heric-cli` (binary `heric-cli`).
-- MSRV 1.95, the floor imposed by `eframe`/`egui` 0.37 and `egui_dock` 0.21.
+- MSRV 1.95, the floor imposed by `eframe`/`egui` 0.37.
+- The GUI uses `egui`'s own panels, not a docking crate (ADR 0013):
+  `egui_dock` 0.21.1 pins `egui` 0.36 and would link a second copy of the
+  toolkit. `egui_tiles` 0.18 is pinned as the approved dock if draggable splits
+  ever become a requirement.
 - The workspace declares candidate dependencies pinned in
   `[workspace.dependencies]`; each crate depends only on what it uses.
 - Clippy's `all` group runs at priority -1 so the deny-level lints win.
@@ -98,7 +112,11 @@ Last update: 2026-11-10.
 
 ## Next
 
-1. Phase 1 begins with brainstorming in Portuguese and the ADRs plus public
-   traits, on `feature/architecture`.
-2. The first real release is `v0.1.0` at the end of M1; until then the
+1. Finish Phase 1: run the full gate (`fmt`, `clippy --workspace
+   --all-targets -- -D warnings`, `test --workspace`, `deny check`, `doc`),
+   then open the PR from `feature/architecture` into `develop` and get CI green
+   on the four targets.
+2. M1 begins after that merge: SQLite store, blob store, the `curl` engine and
+   the first end-to-end GET/POST in the window.
+3. The first real release is `v0.1.0` at the end of M1; until then the
    repository stays untagged.

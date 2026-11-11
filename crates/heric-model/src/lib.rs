@@ -1,41 +1,45 @@
 //! Domain types for Heric.
 //!
-//! This crate holds the serializable data model shared by storage, the HTTP
-//! engine and the UI: workspaces, requests, environments and related IDs.
-//! It performs no I/O; persistence lives in `heric-storage`.
+//! This crate is the shared vocabulary of the workspace: identifiers, the
+//! document model, the mutation and query types, and the wire types the
+//! request pipeline passes between crates. It performs no I/O and has no
+//! Heric dependencies, which is what lets every other library crate depend on
+//! it without a cycle.
 //!
-//! Layout is derived from the Insomnia data model (see
-//! `docs/inventory/models.md` once the Phase 0.3 inventory lands).
+//! Layout follows the Insomnia data model as recorded in
+//! `docs/inventory/models.md`.
 
-/// Strongly typed identifier for domain entities.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
-#[serde(transparent)]
-pub struct Id(String);
+#![deny(unsafe_code)]
 
-impl Id {
-    /// Creates an ID from a raw string without validating its format.
-    #[must_use]
-    pub fn new(raw: impl Into<String>) -> Self {
-        Self(raw.into())
-    }
+mod diagnostic;
+mod doc;
+mod error;
+mod id;
+mod kind;
+mod wire;
 
-    /// Returns the raw string form of this ID.
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
+pub use diagnostic::{Diagnostic, MessageKey, MessageValue};
+pub use doc::{Change, Doc, DocMeta, Patch, PatchOp, Query, Request, Workspace};
+pub use error::ModelError;
+pub use id::Id;
+pub use kind::DocKind;
+pub use wire::{Body, Execution, Header, PreparedRequest, TimelineEntry, TimelineKind, Timings};
+
+/// Returns the version of `heric-model`, which tracks the workspace version.
+#[must_use]
+pub fn version() -> &'static str {
+    env!("CARGO_PKG_VERSION")
 }
 
-impl std::fmt::Display for Id {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-
-/// Generates a fresh random identifier.
+/// Generates a fresh random identifier with no type prefix.
+///
+/// Prefer [`Id::generate`], which prefixes the identifier with the kind it
+/// belongs to. This function exists for the few places that need an opaque
+/// identifier, such as cookie ids, which the original also generates without a
+/// prefix.
 #[must_use]
 pub fn generate_id() -> Id {
-    Id(uuid::Uuid::new_v4().to_string())
+    Id::opaque(uuid::Uuid::new_v4().simple().to_string())
 }
 
 #[cfg(test)]
@@ -43,20 +47,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn id_serializes_transparently() -> Result<(), Box<dyn std::error::Error>> {
-        let id = Id::new("wrk_123");
-        let json = serde_json::to_string(&id)?;
-        assert_eq!(json, r#""wrk_123""#);
-        let back: Id = serde_json::from_str(&json)?;
-        assert_eq!(back, id);
-        Ok(())
+    fn version_is_semver_like() {
+        assert_eq!(version().split('.').count(), 3);
     }
 
     #[test]
-    fn generate_id_is_unique() {
-        let a = generate_id();
-        let b = generate_id();
-        assert_ne!(a, b);
-        assert!(!a.as_str().is_empty());
+    fn opaque_ids_are_unique() {
+        assert_ne!(generate_id(), generate_id());
     }
 }

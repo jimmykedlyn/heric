@@ -1,6 +1,6 @@
 # 0006 — Storage format
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-11-10
 
 ## Context

@@ -29,9 +29,22 @@ feature parity and keeping compatibility with users' existing data.
 
 ## Phase 1 — architecture and contracts
 
-Not started. Begins with brainstorming in Portuguese, then ADRs and public
-traits/type signatures with `todo!()` stubs. Ends with `feature/architecture`
-merged into `develop` and a green CI on the three platforms.
+In progress on `feature/architecture`, branched from `develop`.
+
+Done:
+
+| Step | Status | Notes |
+|---|---|---|
+| Brainstorming with the owner, in Portuguese | done | Four decisions locked: secrets copied as ciphertext with pending re-entry, dedicated Intel and Silicon macOS runners, `curl` as the HTTP engine, and a Heric-owned data directory that never writes back into the Insomnia tree. |
+| Design document | done | `docs/superpowers/specs/2026-11-10-heric-architecture-design.md`, 999 lines, approved by the owner. |
+| ADRs | done | 0001–0013 in `docs/adr/`. 0010 (libcurl build and TLS) stays *proposed* until its CI spike runs. |
+| Public contracts per crate | done | Twelve library crates expose traits, types and signatures with `todo!()` bodies where the implementation belongs to a later milestone. `heric-core` wires them and owns the GUI concurrency model. |
+| GUI concurrency model | done | ADR 0009: one UI thread, one tokio runtime, one unbounded event channel, repaint requested after the event is enqueued. |
+| Binaries wired to the core | done | The GUI owns the event bridge and renders the console; the CLI exposes `version`, `migrate`, `import`, `export`, `run`, `test`, `lint` and `snippet`, each reporting its milestone until the port exists. |
+| Quality gates | pending | `fmt`, `clippy -D warnings`, `test`, `deny` and `doc` must all pass on the four targets in CI before the PR merges. |
+
+Ends with `feature/architecture` merged into `develop` and a green CI on all
+four targets.
 
 Initial workspace proposal (adjust after the inventory):
 
