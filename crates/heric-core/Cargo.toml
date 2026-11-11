@@ -13,8 +13,16 @@ workspace = true
 
 [dependencies]
 heric-auth = { workspace = true }
+heric-codegen = { workspace = true }
+heric-git = { workspace = true }
 heric-http = { workspace = true }
+heric-import = { workspace = true }
 heric-model = { workspace = true }
+heric-openapi = { workspace = true }
+heric-protocols = { workspace = true }
+heric-script = { workspace = true }
 heric-storage = { workspace = true }
 heric-template = { workspace = true }
+serde_json = { workspace = true }
 thiserror = { workspace = true }
+tokio = { workspace = true }

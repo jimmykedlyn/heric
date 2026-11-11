@@ -12,4 +12,5 @@ repository.workspace = true
 workspace = true
 
 [dependencies]
+heric-model = { workspace = true }
 thiserror = { workspace = true }

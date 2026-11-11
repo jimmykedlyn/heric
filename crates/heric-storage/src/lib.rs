@@ -1,22 +1,38 @@
-//! Persistence for Heric.
+//! Persistence for Heric: the document store, the blob store, and the NeDB
+//! migration layer.
 //!
-//! Owns the on-disk storage format (chosen in a Phase 1 ADR) and the
-//! reader/migrator for existing Insomnia NeDB data directories on Windows,
-//! Linux and macOS. See `docs/inventory/storage.md` once the inventory lands.
+//! Nothing outside this crate knows that SQLite is involved. Callers hold
+//! [`Store`] and [`BlobStore`] trait objects; the concrete implementations are
+//! constructed here by [`open`] and [`open_blobs`] and injected by `heric-core`.
 
-/// Returns the default data directory for the current platform.
-///
-/// Placeholder until the storage format ADR lands; uses the
-/// `directories` crate conventions when implemented.
+#![deny(unsafe_code)]
+
+mod blob;
+mod error;
+mod migratedb;
+mod paths;
+mod store;
+
+pub use blob::{BlobId, BlobStore, BlobStoreHandle, open as open_blobs};
+pub use error::{StorageDiagnostic, StorageError};
+pub use heric_model::Change;
+pub use migratedb::{
+    DryRunReport, KindCount, MigrationOptions, MigrationReport, NeDbReader, PendingSecret, dry_run,
+    migrate,
+};
+pub use paths::{DataPaths, InsomniaDataDir, SourceLayout, discover_insomnia_data_dir};
+pub use store::{Store, StoreHandle, open};
+
+/// Returns the version of `heric-storage`.
 #[must_use]
-pub fn default_data_dir_placeholder() -> &'static str {
-    "heric"
+pub fn version() -> &'static str {
+    env!("CARGO_PKG_VERSION")
 }
 
 #[cfg(test)]
 mod tests {
     #[test]
-    fn placeholder_is_non_empty() {
-        assert!(!super::default_data_dir_placeholder().is_empty());
+    fn version_is_semver_like() {
+        assert_eq!(super::version().split('.').count(), 3);
     }
 }

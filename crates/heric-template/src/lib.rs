@@ -1,17 +1,79 @@
-//! Nunjucks-compatible templating for Heric.
+//! Template rendering for Heric: Liquid semantics, plus the template tags the
+//! original client defines.
 //!
-//! Reimplements the subset of Nunjucks that Insomnia uses (variables,
-//! filters, template tags such as `{% response %}`, `{% uuid %}`,
-//! `{% timestamp %}` and custom tag registration) with golden tests built
-//! from the original TypeScript test table. See `docs/inventory/templating.md`
-//! once the inventory lands.
+//! "Nunjucks" is the name the original codebase uses for this engine. The
+//! language it actually implements is Liquid, configured to look like
+//! Nunjucks: Liquid filters, `strictVariables` on by default, JavaScript
+//! truthiness and a dual root/`_` context. ADR 0003 records why that
+//! distinction matters.
+//!
+//! The renderer is synchronous and pure apart from the [`TagHost`] calls, so
+//! the code that renders a preview and the code that renders before a send are
+//! the same code.
 
-/// Error type for template rendering.
-#[derive(Debug, thiserror::Error)]
-pub enum RenderError {
-    /// A variable or tag referenced something unavailable in the context.
-    #[error("unknown variable: {0}")]
-    UnknownVariable(String),
+#![deny(unsafe_code)]
+
+mod context;
+mod error;
+mod host;
+mod purpose;
+mod tag;
+
+pub use context::{ConfidentialPolicy, RenderContext, Scope};
+pub use error::{RenderError, RenderErrorKind};
+pub use host::{PromptAnswer, PromptRequest, ReadPurpose, TagHost, Timeout};
+pub use purpose::RenderPurpose;
+pub use tag::{TagDefinition, TagError, tags};
+
+/// Renders a template string.
+///
+/// # Errors
+///
+/// Returns [`RenderError`] when the template does not parse or evaluation
+/// fails. Undefined-variable failures are reported as
+/// [`RenderErrorKind::UndefinedVariable`], which the UI branches on.
+pub fn render(
+    input: &str,
+    context: &RenderContext<'_>,
+    host: &dyn TagHost,
+) -> Result<String, RenderError> {
+    let _ = (input, context, host);
+    todo!("M1: parse and evaluate a Liquid template")
+}
+
+/// Renders every templated field of a request in place.
+///
+/// Which fields are rendered, in which order, and which are left alone is the
+/// contract this function exists to hold: the original renders URL, query
+/// parameters, headers, body text, path parameters and the authentication
+/// block, and never re-renders a cookie.
+///
+/// # Errors
+///
+/// Returns [`RenderError`] and leaves the document unmodified on failure, so a
+/// half-rendered request never reaches the engine.
+pub fn render_request(
+    request: &mut heric_model::Doc,
+    context: &RenderContext<'_>,
+    host: &dyn TagHost,
+) -> Result<(), RenderError> {
+    let _ = (request, context, host);
+    todo!("M1: render the request's templated fields atomically")
+}
+
+/// Reports whether a string contains template syntax.
+///
+/// The original short-circuits before parsing when it finds none, which is what
+/// keeps the common case cheap.
+#[must_use]
+pub fn has_template_syntax(input: &str) -> bool {
+    input.contains("{{") || input.contains("{%")
+}
+
+/// Returns the version of `heric-template`.
+#[must_use]
+pub fn version() -> &'static str {
+    env!("CARGO_PKG_VERSION")
 }
 
 #[cfg(test)]
@@ -19,8 +81,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn error_message_is_readable() {
-        let err = RenderError::UnknownVariable("base_url".to_string());
-        assert_eq!(err.to_string(), "unknown variable: base_url");
+    fn detects_both_tag_forms() {
+        assert!(has_template_syntax("{{ base_url }}/users"));
+        assert!(has_template_syntax("{% uuid 'v4' %}"));
+        assert!(!has_template_syntax("https://example.com"));
     }
 }

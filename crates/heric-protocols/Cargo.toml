@@ -12,5 +12,9 @@ repository.workspace = true
 workspace = true
 
 [dependencies]
+heric-auth = { workspace = true }
 heric-model = { workspace = true }
+prost-reflect = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
 thiserror = { workspace = true }
