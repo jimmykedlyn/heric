@@ -378,7 +378,7 @@ fn a_new_request_gets_get_and_an_empty_body() -> Result<(), ModelError> {
     assert_eq!(doc.body.get("method"), Some(&serde_json::json!("GET")));
     assert_eq!(doc.body.get("headers"), Some(&serde_json::json!([])));
     assert_eq!(doc.body.get("authentication"), Some(&serde_json::json!({})));
-    assert_eq!(doc.body.get("isPrivate"), Some(&serde_json::json!(false)));
+    assert_eq!(doc.meta.private, Some(false));
     assert_eq!(doc.body.get("metaSortKey"), Some(&serde_json::json!(-1_000.0)));
     assert!(doc.meta.id.as_str().starts_with("req_"));
     Ok(())
@@ -576,6 +576,7 @@ fn a_saved_path_parameter_is_merged_over_the_url_template() -> Result<(), ModelE
 
 **Files:**
 - Create: `crates/heric-model/src/settings.rs`
+- Modify: `crates/heric-model/src/lib.rs`
 - Test: `#[cfg(test)]` in `settings.rs`
 
 **Interfaces:**
