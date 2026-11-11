@@ -1,5 +1,6 @@
 //! Platform data directories and Insomnia data directory discovery.
 
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 use crate::error::StorageError;
@@ -39,7 +40,7 @@ impl DataPaths {
         self.root.join("heric.db")
     }
 
-    /// The content-addressed blob store.
+    /// The directory holding response bodies, timelines and event logs.
     #[must_use]
     pub fn blobs(&self) -> PathBuf {
         self.root.join("blobs")
@@ -99,6 +100,9 @@ pub enum SourceLayout {
 /// hold at least one `insomnia.*.db` file so an unrelated `Insomnia` directory
 /// is never mistaken for a data directory.
 ///
+/// An `INSOMNIA_DATA_PATH` set to the empty string counts as unset, so a shell
+/// profile that exports the variable empty does not block migration.
+///
 /// # Errors
 ///
 /// Returns [`StorageError::SourceNotFound`] when the explicit path does not
@@ -107,14 +111,30 @@ pub enum SourceLayout {
 pub fn discover_insomnia_data_dir(
     explicit: Option<PathBuf>,
 ) -> Result<InsomniaDataDir, StorageError> {
+    discover_from(
+        explicit,
+        std::env::var_os(INSOMNIA_DATA_PATH),
+        &platform_candidates(),
+    )
+}
+
+/// The decision half of [`discover_insomnia_data_dir`], with every input
+/// supplied by the caller so it can be tested without touching process state.
+fn discover_from(
+    explicit: Option<PathBuf>,
+    env_value: Option<OsString>,
+    candidates: &[PathBuf],
+) -> Result<InsomniaDataDir, StorageError> {
     if let Some(path) = explicit {
         return explicit_source(path);
     }
-    if let Some(path) = std::env::var_os(INSOMNIA_DATA_PATH).map(PathBuf::from) {
+    if let Some(path) = env_value
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+    {
         return explicit_source(path);
     }
-    let candidates = platform_candidates();
-    for path in &candidates {
+    for path in candidates {
         if holds_insomnia_database(path) {
             return Ok(InsomniaDataDir {
                 path: path.clone(),
@@ -122,7 +142,7 @@ pub fn discover_insomnia_data_dir(
             });
         }
     }
-    Err(StorageError::SourceNotFound(describe(&candidates)))
+    Err(StorageError::SourceNotFound(describe(candidates)))
 }
 
 /// Accepts a user-supplied directory verbatim, or reports it as missing.
@@ -170,17 +190,25 @@ fn platform_candidates() -> Vec<PathBuf> {
     candidates
 }
 
-/// Whether `dir` is a directory holding at least one `insomnia.*.db` file.
+/// Whether `dir` is a directory holding at least one data file.
+///
+/// See [`is_datafile`] for the name rule. This is the same rule the migration
+/// layer's data-file check will apply.
 fn holds_insomnia_database(dir: &Path) -> bool {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return false;
     };
     entries.flatten().any(|entry| {
-        entry
-            .file_name()
-            .to_str()
-            .is_some_and(|name| name.starts_with("insomnia.") && name.ends_with(".db"))
+        let is_file = entry.file_type().is_ok_and(|kind| kind.is_file());
+        is_file && entry.file_name().to_str().is_some_and(is_datafile)
     })
+}
+
+/// Whether `name` is `insomnia.<kind>.db` with a non-empty `<kind>`.
+fn is_datafile(name: &str) -> bool {
+    name.strip_prefix("insomnia.")
+        .and_then(|rest| rest.strip_suffix(".db"))
+        .is_some_and(|kind| !kind.is_empty())
 }
 
 #[cfg(test)]
@@ -249,5 +277,105 @@ mod tests {
             discover_insomnia_data_dir(Some(missing)),
             Err(StorageError::SourceNotFound(_))
         ));
+    }
+
+    #[test]
+    fn the_environment_variable_beats_the_platform_candidates()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let chosen = temp_source("heric-env-wins")?;
+        let candidate = temp_source("heric-env-loses")?;
+        let found = discover_from(
+            None,
+            Some(chosen.as_os_str().to_owned()),
+            std::slice::from_ref(&candidate),
+        )?;
+        assert_eq!(found.path, chosen);
+        assert_eq!(found.layout, SourceLayout::Explicit(chosen));
+        Ok(())
+    }
+
+    #[test]
+    fn an_explicit_argument_beats_the_environment_variable()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let chosen = temp_source("heric-argument-wins")?;
+        let loser = temp_source("heric-argument-loses")?;
+        let found = discover_from(
+            Some(chosen.clone()),
+            Some(loser.as_os_str().to_owned()),
+            &[],
+        )?;
+        assert_eq!(found.path, chosen);
+        assert_eq!(found.layout, SourceLayout::Explicit(chosen));
+        Ok(())
+    }
+
+    #[test]
+    fn an_empty_environment_variable_falls_through() -> Result<(), Box<dyn std::error::Error>> {
+        let candidate = temp_source("heric-env-empty")?;
+        let found = discover_from(
+            None,
+            Some(OsString::new()),
+            std::slice::from_ref(&candidate),
+        )?;
+        assert_eq!(found.path, candidate);
+        assert_eq!(found.layout, SourceLayout::PlatformDefault);
+        Ok(())
+    }
+
+    #[test]
+    fn the_first_candidate_holding_a_database_wins() -> Result<(), Box<dyn std::error::Error>> {
+        let empty = std::env::temp_dir().join("heric-candidate-empty");
+        std::fs::create_dir_all(&empty)?;
+        let populated = temp_source("heric-candidate-populated")?;
+        let later = temp_source("heric-candidate-later")?;
+        let found = discover_from(None, None, &[empty, populated.clone(), later])?;
+        assert_eq!(found.path, populated);
+        assert_eq!(found.layout, SourceLayout::PlatformDefault);
+        Ok(())
+    }
+
+    #[test]
+    fn no_candidate_names_every_path_tried() -> Result<(), Box<dyn std::error::Error>> {
+        let first = std::env::temp_dir().join("heric-candidate-none-first");
+        std::fs::create_dir_all(&first)?;
+        let second = std::env::temp_dir().join("heric-candidate-none-second");
+        std::fs::create_dir_all(&second)?;
+        let Err(error) = discover_from(None, None, &[first.clone(), second.clone()]) else {
+            return Err("two empty candidates must not be found".into());
+        };
+        let StorageError::SourceNotFound(listing) = error else {
+            return Err("the error should be SourceNotFound".into());
+        };
+        assert!(listing.contains(&first.display().to_string()), "{listing}");
+        assert!(listing.contains(&second.display().to_string()), "{listing}");
+        Ok(())
+    }
+
+    #[test]
+    fn the_datafile_name_rule_rejects_empty_and_misspelled_kinds() {
+        assert!(is_datafile("insomnia.Workspace.db"));
+        assert!(is_datafile("insomnia.WorkspaceMeta.db"));
+        assert!(!is_datafile("insomnia.db"));
+        assert!(!is_datafile("insomnia..db"));
+        assert!(!is_datafile("notes.db"));
+        assert!(!is_datafile("insomnia.Workspace.json"));
+        assert!(!is_datafile("insomnia.Workspace.db.bak"));
+    }
+
+    #[test]
+    fn a_directory_named_like_a_database_is_not_a_source() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let dir = std::env::temp_dir().join("heric-insomnia-probe-directory-named-db");
+        std::fs::create_dir_all(dir.join("insomnia.Workspace.db"))?;
+        assert!(!holds_insomnia_database(&dir));
+        Ok(())
+    }
+
+    /// Creates a directory `name` under the temp dir holding one database file.
+    fn temp_source(name: &str) -> Result<PathBuf, Box<dyn std::error::Error>> {
+        let dir = std::env::temp_dir().join(name);
+        std::fs::create_dir_all(&dir)?;
+        std::fs::write(dir.join("insomnia.Workspace.db"), b"")?;
+        Ok(dir)
     }
 }

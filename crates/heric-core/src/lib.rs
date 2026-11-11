@@ -24,7 +24,7 @@ mod error;
 mod events;
 mod host;
 mod plan;
-mod platform;
+pub mod platform;
 mod runtime;
 mod service;
 mod session;
