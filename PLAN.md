@@ -29,9 +29,7 @@ feature parity and keeping compatibility with users' existing data.
 
 ## Phase 1 — architecture and contracts
 
-In progress on `feature/architecture`, branched from `develop`.
-
-Done:
+Complete. Merged into `develop` by PR #364 (`08c8932`).
 
 | Step | Status | Notes |
 |---|---|---|
@@ -41,10 +39,10 @@ Done:
 | Public contracts per crate | done | Twelve library crates expose traits, types and signatures with `todo!()` bodies where the implementation belongs to a later milestone. `heric-core` wires them and owns the GUI concurrency model. |
 | GUI concurrency model | done | ADR 0009: one UI thread, one tokio runtime, one unbounded event channel, repaint requested after the event is enqueued. |
 | Binaries wired to the core | done | The GUI owns the event bridge and renders the console; the CLI exposes `version`, `migrate`, `import`, `export`, `run`, `test`, `lint` and `snippet`, each reporting its milestone until the port exists. |
-| Quality gates | pending | `fmt`, `clippy -D warnings`, `test`, `deny` and `doc` must all pass on the four targets in CI before the PR merges. |
+| Quality gates | done | All five pass locally and all eight CI checks pass on the four targets: 245 tests, `clippy -D warnings`, `cargo deny`, rustdoc and the three-language docs build. |
+| Merge | done | PR #364, squash-merged into `develop` as `08c8932`; the branch was deleted. |
 
-Ends with `feature/architecture` merged into `develop` and a green CI on all
-four targets.
+Phase 1 is complete. M1 begins on `develop`.
 
 Initial workspace proposal (adjust after the inventory):
 
