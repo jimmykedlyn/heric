@@ -24,6 +24,7 @@ mod error;
 mod events;
 mod host;
 mod plan;
+mod platform;
 mod runtime;
 mod service;
 mod session;
@@ -33,6 +34,7 @@ pub use error::{CoreDiagnostic, CoreError};
 pub use events::{CoreEvent, EventReceiver, EventSink, RepaintSignal, no_repaint};
 pub use host::{AllowedRoots, SendingHost};
 pub use plan::{ExecutionPlan, PlanStage, SendOutcome, StopReason};
+pub use platform::{Platform, current};
 pub use runtime::{Core, CoreBuilder, CoreHandle};
 pub use service::{
     CookieService, EnvironmentService, ExportService, ImportService, RequestService, RunnerService,
