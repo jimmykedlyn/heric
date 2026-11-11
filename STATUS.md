@@ -2,9 +2,34 @@
 
 Updated at the end of every work session and committed to `develop`.
 
-Last update: 2026-11-10.
+Last update: 2026-11-11.
 
 ## Done
+
+- Phase 1, merged in PR #364 (`08c8932`, squash):
+  - Brainstorming with the owner closed four decisions: secrets copied as
+    ciphertext with pending re-entry, dedicated Intel and Silicon macOS
+    runners, `curl` as the engine, and a Heric-owned data directory that
+    never writes back into the Insomnia tree.
+  - Architecture design approved (1,008 lines, in
+    `docs/superpowers/specs/`), with ADRs 0001–0013. ADR 0010 (libcurl build
+    and TLS) stays *proposed* until its CI spike runs.
+  - Twelve library crates expose their public contracts with `todo!()` bodies
+    naming the milestone. `heric-core` wires them and owns the concurrency
+    model from ADR 0009.
+  - `heric-core` re-exports every type its service signatures name, so a front
+    end depends on one crate rather than twelve.
+  - `apps/gui` owns the event bridge, drains it once per frame and renders a
+    console; `apps/cli` exposes `version`, `migrate`, `import`, `export`,
+    `run`, `test`, `lint` and `snippet`, each reporting its milestone.
+  - ADR 0013 replaced the planned `egui_dock`: it pins `egui` 0.36 against a
+    0.37 workspace and docking has no parity row. The GUI uses `egui`'s own
+    panels; `egui_tiles` 0.18 is pinned as the approved dock for later.
+  - Workspace dependencies reconciled with the ADRs: `curl` added,
+    `reqwest`, `rustls-platform-verifier` and `egui_dock` removed.
+  - All five gates pass locally and all eight CI checks pass on the four
+    targets: 245 tests, clippy with warnings denied, `cargo deny`, rustdoc
+    and the three-language docs build.
 
 - Cargo workspace with 12 library crates and 2 binaries, all compiling with
   stub implementations and unit tests.
@@ -72,17 +97,8 @@ Last update: 2026-11-10.
 
 ## In progress
 
-- Phase 1 on `feature/architecture`, branched from `develop`:
-  - Brainstorming with the owner closed four decisions (secrets copied as
-    ciphertext with pending re-entry, dedicated Intel and Silicon macOS
-    runners, `curl` as the engine, a Heric-owned data directory).
-  - The architecture design is approved; ADRs 0001–0013 exist and 0010 is the
-    only one still *proposed*.
-  - The twelve library crates carry their public contracts with `todo!()`
-    bodies. `heric-core` wires them and owns the concurrency model.
-  - `apps/gui` owns the event bridge, drains it once per frame and renders a
-    console; `apps/cli` exposes the full subcommand surface.
-  - Remaining: the quality gates and the PR to `develop`.
+- Nothing. Phase 1 is complete and merged into `develop` as PR #364
+  (`08c8932`); M1 starts next.
 
 ## Blocked
 
@@ -112,11 +128,12 @@ Last update: 2026-11-10.
 
 ## Next
 
-1. Finish Phase 1: run the full gate (`fmt`, `clippy --workspace
-   --all-targets -- -D warnings`, `test --workspace`, `deny check`, `doc`),
-   then open the PR from `feature/architecture` into `develop` and get CI green
-   on the four targets.
-2. M1 begins after that merge: SQLite store, blob store, the `curl` engine and
-   the first end-to-end GET/POST in the window.
+1. M1: SQLite store and blob store (`heric-storage`), the `curl` engine
+   (`heric-http`), the M1 template tags and the first end-to-end GET/POST in
+   the window. `heric-core` already wires all of it; the `todo!()` bodies are
+   the work.
+2. ADR 0010's spike: build and test the workspace with the selected libcurl
+   feature set on all four targets, then move it from *proposed* to *accepted*
+   or fall back as it describes.
 3. The first real release is `v0.1.0` at the end of M1; until then the
    repository stays untagged.
