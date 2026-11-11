@@ -23,7 +23,9 @@ fn blob_root(root: &Path) -> PathBuf {
 /// The file a blob is stored in, under the data `root`.
 ///
 /// The path is derived, never listed: an owner id that names no file simply
-/// has no blob.
+/// has no blob. The function is pure and does not judge the id; a store
+/// refuses an id that would escape the blob directory before calling this, so
+/// a path returned here is only safe for introspection on its own.
 #[must_use]
 pub fn blob_path(root: &Path, id: &BlobId) -> PathBuf {
     blob_root(root)
@@ -93,36 +95,52 @@ impl FsBlobStore {
         })
     }
 
-    /// The file backing `id`.
-    fn path(&self, id: &BlobId) -> PathBuf {
-        blob_path(&self.root, id)
+    /// The file backing `id`, or the reason its id cannot name one.
+    ///
+    /// [`blob_path`] derives the path without judging the id, because it is a
+    /// pure function. The store cannot afford that: an owner id arrives from a
+    /// datafile Heric did not write, and [`crate::BlobStore`] must never read
+    /// or write outside its own blob directory.
+    fn checked_path(&self, id: &BlobId) -> Result<PathBuf, StorageError> {
+        if !is_single_segment(id.owner.as_str()) {
+            return Err(StorageError::Database(format!(
+                "blob owner id {:?} is not a single path segment",
+                id.owner.as_str()
+            )));
+        }
+        Ok(blob_path(&self.root, id))
     }
+}
+
+/// Whether `raw` can be a path segment without escaping the directory it is
+/// joined to.
+///
+/// The test is the one the standard library itself uses: the id must parse as
+/// exactly one [`Component::Normal`]. That rejects `..` and `.`, a separator
+/// on either platform (an id may have been written on the other one), and —
+/// on Windows — a drive-relative spelling such as `C:evil`, where
+/// `base.join("C:evil")` discards `base` entirely while containing no
+/// separator at all.
+fn is_single_segment(raw: &str) -> bool {
+    matches!(
+        Path::new(raw).components().collect::<Vec<_>>().as_slice(),
+        [std::path::Component::Normal(_)]
+    )
 }
 
 impl BlobStore for FsBlobStore {
     fn put(&self, id: &BlobId, bytes: &[u8]) -> Result<(), StorageError> {
-        let path = self.path(id);
+        let path = self.checked_path(id)?;
         let directory = path.parent().ok_or_else(|| {
             StorageError::Blob(format!("blob path {} has no directory", path.display()))
         })?;
         std::fs::create_dir_all(directory).map_err(|error| blob_error(directory, &error))?;
-        // Written beside the target and renamed into place, so a crash never
-        // leaves a half-written blob where a whole one used to be.
+        // Written beside the target and renamed into place, so a crash leaves
+        // either the previous blob or the new one, never a truncated file.
+        // `fs::rename` replaces an existing destination on Windows as well as
+        // on Unix, so no removal is needed first and the swap is atomic.
         let temporary = temporary_path(&path);
         std::fs::write(&temporary, bytes).map_err(|error| blob_error(&temporary, &error))?;
-        // `fs::rename` refuses to replace an existing file on Windows, and the
-        // trait promises replacement. Windows has no portable atomic replace
-        // in `std`, so the old file goes first; the window is between two
-        // local metadata operations, and a crash there leaves an absent blob,
-        // which reads as `None` rather than as a corrupt body.
-        match std::fs::remove_file(&path) {
-            Ok(()) => {}
-            Err(error) if error.kind() == ErrorKind::NotFound => {}
-            Err(error) => {
-                let _ = std::fs::remove_file(&temporary);
-                return Err(blob_error(&path, &error));
-            }
-        }
         if let Err(error) = std::fs::rename(&temporary, &path) {
             let _ = std::fs::remove_file(&temporary);
             return Err(blob_error(&path, &error));
@@ -131,7 +149,7 @@ impl BlobStore for FsBlobStore {
     }
 
     fn get(&self, id: &BlobId) -> Result<Option<Vec<u8>>, StorageError> {
-        let path = self.path(id);
+        let path = self.checked_path(id)?;
         match std::fs::read(&path) {
             Ok(bytes) => Ok(Some(bytes)),
             Err(error) if error.kind() == ErrorKind::NotFound => Ok(None),
@@ -140,7 +158,7 @@ impl BlobStore for FsBlobStore {
     }
 
     fn stream(&self, id: &BlobId) -> Result<Box<dyn Read + Send>, StorageError> {
-        let path = self.path(id);
+        let path = self.checked_path(id)?;
         match File::open(&path) {
             Ok(file) => {
                 let reader: Box<dyn Read + Send> = Box::new(file);
@@ -154,7 +172,7 @@ impl BlobStore for FsBlobStore {
     }
 
     fn remove(&self, id: &BlobId) -> Result<(), StorageError> {
-        let path = self.path(id);
+        let path = self.checked_path(id)?;
         match std::fs::remove_file(&path) {
             Ok(()) => Ok(()),
             Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
@@ -273,6 +291,93 @@ mod tests {
         store.put(&id, b"first")?;
         store.put(&id, b"second")?;
         assert_eq!(store.get(&id)?, Some(b"second".to_vec()));
+        Ok(())
+    }
+
+    #[test]
+    fn the_on_disk_layout_is_the_documented_one() {
+        let root = Path::new("/data/heric");
+        let id = BlobId {
+            owner: Id::new("res_1"),
+            owner_kind: DocKind::Response,
+            role: BlobRole::Body,
+        };
+        assert_eq!(blob_path(root, &id), root.join("blobs/Response/body/res_1"));
+    }
+
+    #[test]
+    fn a_path_traversing_id_is_refused() -> Result<(), Box<dyn std::error::Error>> {
+        let probe = tempfile::tempdir()?;
+        // A file the unguarded `blob_path` would resolve to: three `..` climb
+        // back from `blobs/Response/body/` to the data root itself.
+        let outside = probe.path().join("insomnia.Request.db");
+        std::fs::write(&outside, b"source")?;
+        let store = FsBlobStore::open(probe.path())?;
+        std::fs::create_dir_all(probe.path().join("blobs/Response/body"))?;
+
+        let traversing = BlobId {
+            owner: Id::new("..\\..\\..\\insomnia.Request.db"),
+            owner_kind: DocKind::Response,
+            role: BlobRole::Body,
+        };
+        assert_eq!(
+            std::fs::canonicalize(blob_path(probe.path(), &traversing))?,
+            std::fs::canonicalize(&outside)?,
+            "the unguarded path is exactly the file the guard must not reach"
+        );
+
+        for owner in [
+            "..\\..\\..\\insomnia.Request.db",
+            "a/b",
+            "..",
+            "",
+            "a\\b",
+            ".",
+        ] {
+            let id = BlobId {
+                owner: Id::new(owner),
+                owner_kind: DocKind::Response,
+                role: BlobRole::Body,
+            };
+            assert!(
+                matches!(store.put(&id, b"escaped"), Err(StorageError::Database(_))),
+                "put must refuse the id {owner:?}"
+            );
+            assert!(
+                matches!(store.get(&id), Err(StorageError::Database(_))),
+                "get must refuse the id {owner:?}"
+            );
+            assert!(
+                matches!(store.stream(&id), Err(StorageError::Database(_))),
+                "stream must refuse the id {owner:?}"
+            );
+            assert!(
+                matches!(store.remove(&id), Err(StorageError::Database(_))),
+                "remove must refuse the id {owner:?}"
+            );
+        }
+
+        // The file a naive read would have returned is untouched, so nothing
+        // was read from it and nothing was written over it.
+        assert_eq!(std::fs::read(&outside)?, b"source");
+        Ok(())
+    }
+
+    /// A drive-relative spelling is a single component on Unix but makes
+    /// `Path::join` discard the base on Windows, where it must be refused.
+    #[cfg(windows)]
+    #[test]
+    fn a_drive_relative_id_is_refused() -> Result<(), Box<dyn std::error::Error>> {
+        let store = ephemeral_blobs()?;
+        let id = BlobId {
+            owner: Id::new("C:evil"),
+            owner_kind: DocKind::Response,
+            role: BlobRole::Body,
+        };
+        assert!(matches!(
+            store.put(&id, b"escaped"),
+            Err(StorageError::Database(_))
+        ));
         Ok(())
     }
 
