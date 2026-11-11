@@ -39,11 +39,12 @@ pub trait Store: Send + Sync {
     /// field the stored document has and `doc` does not is removed, not kept.
     /// Partial updates go through [`Store::update`].
     ///
-    /// The default implementation inserts, and on a duplicate turns the stored
-    /// copy into `doc` with a full-replacement patch, so an implementation
-    /// that can replace in one statement should override it. Because the
-    /// replacement goes through [`Store::update`], the returned document
-    /// carries the update's fresh `modified` rather than `doc`'s own.
+    /// Both paths return `doc`'s own `modified`: the insert stores it as given,
+    /// and the default implementation's replacement patch sets it explicitly,
+    /// which [`Store::update`] leaves alone instead of stamping the current
+    /// time. The default implementation inserts, and on a duplicate turns the
+    /// stored copy into `doc` with a full-replacement patch, so an
+    /// implementation that can replace in one statement should override it.
     ///
     /// # Errors
     ///

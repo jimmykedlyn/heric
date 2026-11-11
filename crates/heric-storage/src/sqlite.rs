@@ -211,11 +211,12 @@ pub(crate) fn ephemeral() -> Result<StoreHandle, StorageError> {
     Ok(std::sync::Arc::new(store))
 }
 
-/// Applies a patch to a document and stamps it with the current time.
+/// Applies a patch to a document.
 ///
 /// The patch is applied to the document's JSON form, so a field that names a
 /// meta column and a field that names a body key are handled by the same
-/// code.
+/// code. An edit is stamped with the current time; a patch that sets `modified`
+/// itself keeps that value, because a whole-document replacement supplies one.
 fn apply_patch(stored: &Doc, id: &Id, patch: &Patch) -> Result<Doc, StorageError> {
     let value = serde_json::to_value(stored).map_err(database)?;
     let Json::Object(mut fields) = value else {
@@ -234,10 +235,13 @@ fn apply_patch(stored: &Doc, id: &Id, patch: &Patch) -> Result<Doc, StorageError
         }
     }
     // The id addresses the row, so a patch cannot move it; every other meta
-    // field is patchable like a body key. `modified` is stamped last and wins
-    // over a patch that sets it, which is the store's contract for an edit.
+    // field is patchable like a body key. `modified` is stamped last unless the
+    // patch set it explicitly: an edit is stamped with the current time, while
+    // a whole-document replacement carries the caller's own stamp.
     fields.insert("_id".to_owned(), Json::String(id.as_str().to_owned()));
-    fields.insert("modified".to_owned(), Json::from(now_millis()));
+    if !matches!(patch.fields.get("modified"), Some(PatchOp::Set(_))) {
+        fields.insert("modified".to_owned(), Json::from(now_millis()));
+    }
     serde_json::from_value(Json::Object(fields)).map_err(database)
 }
 
@@ -511,12 +515,15 @@ mod tests {
         ));
         doc.body.insert("method".into(), json!("POST"));
         doc.body.remove("headers");
-        assert_eq!(store.upsert(&doc)?.body.get("method"), Some(&json!("POST")));
+        doc.meta.modified = 42;
+        let upserted = store.upsert(&doc)?;
+        assert_eq!(upserted.body.get("method"), Some(&json!("POST")));
+        // The caller's stamp survives the replace path, not just the insert.
+        assert_eq!(upserted.meta.modified, 42);
+        let back = store.get(&doc.meta.id)?.ok_or("missing")?;
         // Replacement, not merge: the removed field does not survive.
-        assert_eq!(
-            store.get(&doc.meta.id)?.map(|back| back.body),
-            Some(doc.body)
-        );
+        assert_eq!(back.body, doc.body);
+        assert_eq!(back.meta.modified, 42);
         Ok(())
     }
 
