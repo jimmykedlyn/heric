@@ -183,7 +183,9 @@ impl Store for SqliteStore {
     /// Deleting a workspace deletes its folders, their requests and those
     /// requests' responses in one transaction, so a caller never observes a
     /// half-deleted tree. An id that is not stored removes nothing and reports
-    /// an empty list.
+    /// an empty list, and a removal that matched nothing emits no change: the
+    /// original notifies per removed document, so zero documents is zero
+    /// notifications and no subscriber reloads a tree that did not change.
     fn remove(&self, id: &Id) -> Result<Vec<Id>, StorageError> {
         let mut connection = self.lock()?;
         let transaction = connection.transaction().map_err(database)?;
@@ -197,7 +199,9 @@ impl Store for SqliteStore {
             }
         }
         transaction.commit().map_err(database)?;
-        let _ = self.sender.send(Change::Removed(removed.clone()));
+        if !removed.is_empty() {
+            let _ = self.sender.send(Change::Removed(removed.clone()));
+        }
         Ok(removed)
     }
 
@@ -734,6 +738,19 @@ mod tests {
             ["fld_1", "req_1", "res_1", "wrk_1"]
         );
         assert!(store.get(&Id::new("req_1"))?.is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn a_removal_of_an_absent_id_emits_nothing() -> Result<(), Box<dyn std::error::Error>> {
+        let store = ephemeral()?;
+        let mut rx = store.changes();
+        let removed = store.remove(&Id::new("wrk_absent"))?;
+        assert!(removed.is_empty());
+        assert!(matches!(
+            rx.try_recv(),
+            Err(tokio::sync::broadcast::error::TryRecvError::Empty)
+        ));
         Ok(())
     }
 
