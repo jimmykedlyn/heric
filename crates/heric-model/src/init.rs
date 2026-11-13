@@ -110,6 +110,30 @@ struct ModelSpec {
     sort_key: SortKey,
 }
 
+/// Returns whether the model's `init()` sets `isPrivate: false`.
+///
+/// `isPrivate` is a meta key in Heric, but whether a fresh document carries it
+/// is still model-dependent: exactly five of the original's models set it
+/// (`request.ts:442`, `grpc-request.ts:80`, `ca-certificate.ts:29`,
+/// `environment.ts:70`, `client-certificate.ts:38`), and the pruning loop at
+/// `init-model/index.ts:73-78` *deletes* it for every other type. So a fresh
+/// `Workspace` has no `isPrivate` at all, and [`DocMeta::private`] must stay
+/// `None` for it rather than becoming `Some(false)`: the two mean different
+/// things (see [`DocMeta::private`]), and sync reads the difference.
+///
+/// Three of the five are unmodelled here, so this is a property of the kind and
+/// not of a [`ModelSpec`].
+const fn sets_private(kind: DocKind) -> bool {
+    matches!(
+        kind,
+        DocKind::Request
+            | DocKind::GrpcRequest
+            | DocKind::Environment
+            | DocKind::CaCertificate
+            | DocKind::ClientCertificate
+    )
+}
+
 impl ModelSpec {
     /// Returns whether `field` may appear in a document's body.
     fn declares(&self, field: &str) -> bool {
@@ -327,9 +351,10 @@ static COOKIE_JAR: ModelSpec = ModelSpec {
 /// Builds a fresh document of `kind`, stamped with `now`.
 ///
 /// The id is generated from the kind's prefix, `modified` and `created` are
-/// `now`, `isPrivate` is `false` and there is no parent, matching the
-/// original's `initModel` global defaults. The body comes from the kind's
-/// [`ModelSpec`]; an unmodelled kind gets an empty body.
+/// `now` and there is no parent, matching the original's `initModel` global
+/// defaults. `isPrivate` is set only for the five kinds whose `init()` declares
+/// it, and absent for the rest — see [`sets_private`]. The body comes from the
+/// kind's [`ModelSpec`]; an unmodelled kind gets an empty body.
 #[must_use]
 pub fn document(kind: DocKind, now: i64) -> Doc {
     let mut body = Map::new();
@@ -351,7 +376,7 @@ pub fn document(kind: DocKind, now: i64) -> Doc {
             parent: None,
             modified: now,
             created: now,
-            private: Some(false),
+            private: sets_private(kind).then_some(false),
             name,
         },
         body,
@@ -578,6 +603,39 @@ mod tests {
                 .body
                 .contains_key("metaSortKey")
         );
+    }
+
+    #[test]
+    fn only_the_five_private_models_carry_is_private() {
+        // `isPrivate` is in five `init()` functions and pruned out of every
+        // other type, so a fresh document of any other kind has no such field.
+        for kind in DocKind::ALL {
+            let doc = document_of_kind(*kind);
+            let expected = matches!(
+                kind,
+                DocKind::Request
+                    | DocKind::GrpcRequest
+                    | DocKind::Environment
+                    | DocKind::CaCertificate
+                    | DocKind::ClientCertificate
+            );
+            assert_eq!(
+                doc.meta.private,
+                expected.then_some(false),
+                "{kind} got the wrong isPrivate"
+            );
+        }
+    }
+
+    #[test]
+    fn an_absent_is_private_stays_absent_through_a_round_trip()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let doc = init::document(DocKind::Workspace, 1);
+        let json = serde_json::to_value(&doc)?;
+        assert!(json.get("isPrivate").is_none());
+        let back: Doc = serde_json::from_value(json)?;
+        assert_eq!(back.meta.private, None);
+        Ok(())
     }
 
     #[test]
