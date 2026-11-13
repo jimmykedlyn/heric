@@ -84,6 +84,36 @@ pub enum ConfidentialPolicy {
     Deny,
 }
 
+impl RenderContext<'_> {
+    /// Every layer, merged into one map, lowest precedence first.
+    ///
+    /// The original spreads the seven layers in this order and lets later
+    /// ones win. Order matters: a folder ancestor overrides the collection
+    /// environment, and an iteration variable overrides both.
+    #[must_use]
+    pub fn merged(&self) -> serde_json::Map<String, serde_json::Value> {
+        let mut merged = serde_json::Map::new();
+        for layer in [
+            Some(self.global_root),
+            self.global_sub,
+            Some(self.collection_root),
+            self.collection_sub,
+        ]
+        .into_iter()
+        .flatten()
+        {
+            merged.extend(layer.variables.clone());
+        }
+        for ancestor in self.folder_ancestors {
+            merged.extend(ancestor.variables.clone());
+        }
+        for layer in [self.iteration, self.transient].into_iter().flatten() {
+            merged.extend(layer.variables.clone());
+        }
+        merged
+    }
+}
+
 impl ConfidentialPolicy {
     /// The policy a purpose implies.
     #[must_use]

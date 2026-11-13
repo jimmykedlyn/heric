@@ -16,11 +16,14 @@
 mod ast;
 mod context;
 mod error;
+mod eval;
 mod host;
 mod lexer;
 mod parser;
 mod purpose;
 mod tag;
+pub mod testing;
+mod truthy;
 
 pub use context::{ConfidentialPolicy, RenderContext, Scope};
 pub use error::{RenderError, RenderErrorKind};
@@ -40,15 +43,13 @@ pub fn render(
     context: &RenderContext<'_>,
     host: &dyn TagHost,
 ) -> Result<String, RenderError> {
-    let _ = (context, host);
     // The original short-circuits before parsing when there is nothing to
     // parse; doing the same keeps the common case free of lexing work.
     if !has_template_syntax(input) {
         return Ok(input.to_owned());
     }
-    // Parsing lands here in Task 9; evaluation is Task 10.
     let nodes = parser::parse(input)?;
-    todo!("M1: evaluate the parsed template: {} node(s)", nodes.len())
+    eval::eval(&nodes, context, host)
 }
 
 /// Renders every templated field of a request in place.
