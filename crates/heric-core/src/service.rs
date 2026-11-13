@@ -36,9 +36,9 @@ fn data_object(doc: &Doc) -> serde_json::Map<String, serde_json::Value> {
 
 /// The singleton settings document's id.
 ///
-/// Fixed rather than generated: the original keeps one settings row and looks it
-/// up by a known id, and two settings rows would make every read ambiguous.
-pub const SETTINGS_ID: &str = "set_heric";
+/// Re-exported so that the one literal lives beside the table that fills the
+/// document it identifies; see [`heric_model::settings::SETTINGS_ID`].
+pub use heric_model::settings::SETTINGS_ID;
 
 /// Requests: prepare, send, cancel.
 #[derive(Debug, Clone)]
@@ -693,18 +693,7 @@ impl SettingsService {
         if let Some(doc) = self.core.documents().get(Id::new(SETTINGS_ID)).await? {
             return Ok(doc);
         }
-        let doc = Doc {
-            meta: heric_model::DocMeta {
-                id: Id::new(SETTINGS_ID),
-                kind: DocKind::Settings,
-                parent: None,
-                modified: crate::workspace::now_millis(),
-                created: crate::workspace::now_millis(),
-                private: None,
-                name: None,
-            },
-            body: serde_json::Map::new(),
-        };
+        let doc = heric_model::settings::singleton(crate::workspace::now_millis());
         self.core.documents().insert(doc).await
     }
 

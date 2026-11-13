@@ -13,17 +13,36 @@
 
 mod diagnostic;
 mod doc;
+pub mod environment;
 mod error;
 mod id;
+pub mod init;
 mod kind;
+pub mod registry;
+pub mod request;
+pub mod response;
+pub mod settings;
+mod views;
 mod wire;
+mod workspace;
 
 pub use diagnostic::{Diagnostic, MessageKey, MessageValue};
 pub use doc::{Change, Doc, DocMeta, Order, Patch, PatchOp, Query, Request, Workspace};
+pub use environment::{BASE_NAME, base_for, json_from_kv, kv_from_json};
 pub use error::ModelError;
 pub use id::Id;
+pub use init::{SCRATCHPAD_ORGANIZATION, SCRATCHPAD_PROJECT, SCRATCHPAD_WORKSPACE};
 pub use kind::DocKind;
+pub use response::DEFAULT_MAX_RESPONSES;
+pub use settings::SETTINGS_ID;
+pub use views::{
+    Environment, Project, RequestGroup, Response, copy_name, inherited_authentication,
+    inherited_headers, midpoint,
+};
 pub use wire::{Body, Execution, Header, PreparedRequest, TimelineEntry, TimelineKind, Timings};
+pub use workspace::{
+    CollectionScope, Projects, WorkspaceScope, assert_parent_is_project, scope_of, storage_label,
+};
 
 /// Returns the version of `heric-model`, which tracks the workspace version.
 #[must_use]
