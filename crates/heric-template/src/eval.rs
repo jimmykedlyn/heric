@@ -12,10 +12,13 @@
 
 use serde_json::{Map, Value};
 
+use crate::TagError;
 use crate::ast::{BinaryOp, Expr, Node, Segment, UnaryOp};
 use crate::context::RenderContext;
 use crate::error::RenderError;
+use crate::filters;
 use crate::host::TagHost;
+use crate::tags;
 use crate::truthy::{is_truthy, to_output};
 
 /// How many evaluation steps one render may take.
@@ -46,7 +49,8 @@ pub(crate) fn eval(
 ) -> Result<String, RenderError> {
     let mut state = State {
         scope: context.merged(),
-        _host: host,
+        context: context.clone(),
+        host,
         steps: 0,
         output: String::new(),
         locals: Vec::new(),
@@ -59,8 +63,10 @@ pub(crate) fn eval(
 /// The mutable state of one render.
 struct State<'a> {
     scope: Map<String, Value>,
-    /// The host a tag will call. Task 11 reads it; the core evaluator does not.
-    _host: &'a dyn TagHost,
+    /// The context a tag reads, which is the same one the evaluator merged.
+    context: RenderContext<'a>,
+    /// The host a tag calls.
+    host: &'a dyn TagHost,
     steps: u64,
     output: String,
     /// Loop variables and `assign`/`capture` bindings, innermost last.
@@ -211,10 +217,28 @@ impl State<'_> {
                 self.eval_nodes(otherwise)
             }
             Node::Tag {
-                name, line, column, ..
+                name,
+                args,
+                line,
+                column,
             } => {
                 self.position = (*line, *column);
-                Err(self.evaluation(format!("`{{% {name} %}}` is not implemented yet")))
+                let mut evaluated = Vec::with_capacity(args.len());
+                for arg in args {
+                    evaluated.push(self.eval_expr(arg)?);
+                }
+                // An unknown tag is a mistake in the template, not a host
+                // refusal, so it is reported the way an unknown filter is.
+                let text =
+                    tags::run(name, &evaluated, &mut self.context, self.host).map_err(|error| {
+                        match error {
+                            TagError::Unknown { name } => {
+                                self.evaluation(format!("unknown tag `{name}`"))
+                            }
+                            other => RenderError::Tag(other),
+                        }
+                    })?;
+                self.push(&text)
             }
         }
     }
@@ -311,8 +335,18 @@ impl State<'_> {
                 }
             }
             Expr::Binary { op, lhs, rhs } => self.eval_binary(*op, lhs, rhs),
-            Expr::Filter { name, .. } => {
-                Err(self.evaluation(format!("filter `{name}` is not implemented yet")))
+            Expr::Filter { input, name, args } => {
+                let value = self.eval_expr(input)?;
+                let mut evaluated = Vec::with_capacity(args.len());
+                for arg in args {
+                    evaluated.push(self.eval_expr(arg)?);
+                }
+                // The filter does not know where it was written, so the
+                // position is filled in here rather than left at `0:0`.
+                filters::apply(name, &value, &evaluated).map_err(|error| match error {
+                    RenderError::Evaluation { message, .. } => self.evaluation(message),
+                    other => other,
+                })
             }
         }
     }
@@ -1095,7 +1129,7 @@ mod tests {
     fn an_unknown_tag_is_an_evaluation_error() {
         assert!(
             matches!(
-                render_with("{% uuid 'v4' %}", &Scope::new()),
+                render_with("{% nope 'v4' %}", &Scope::new()),
                 Err(RenderError::Evaluation { .. })
             ),
             "expected an evaluation error"

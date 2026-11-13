@@ -175,7 +175,11 @@ impl<'a> Parser<'a> {
                 format!("`{{% {name} %}}` has no matching opening tag"),
             )),
             _ => {
-                let args = parse_arguments(rest, line, column)?;
+                // A tag's arguments follow the original's looser tokenizer
+                // rather than the expression parser: `{% uuid 'v4' %}` and
+                // `{% file '/tmp/x y' %}` are legal, and a missing comma merges
+                // the rest of the line into one argument (TPL-006).
+                let args = crate::tags::tokenize_args(rest, line, column)?;
                 Ok(Node::Tag {
                     name: name.to_owned(),
                     args,

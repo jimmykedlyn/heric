@@ -17,11 +17,13 @@ mod ast;
 mod context;
 mod error;
 mod eval;
+pub mod filters;
 mod host;
 mod lexer;
 mod parser;
 mod purpose;
 mod tag;
+pub mod tags;
 pub mod testing;
 mod truthy;
 

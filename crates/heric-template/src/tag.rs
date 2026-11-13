@@ -157,6 +157,30 @@ pub enum TagError {
     #[error("request failed: {0}")]
     SendFailed(String),
 
+    /// The tag cannot run in this build.
+    ///
+    /// Distinct from [`Self::BadArguments`]: the caller's template is fine and
+    /// the arguments are fine, but Heric does not have what the tag needs. The
+    /// UI shows it as a capability gap, not as a mistake to fix.
+    #[error("`{tag}` is not available: {detail}")]
+    Unsupported {
+        /// The tag's name.
+        tag: &'static str,
+        /// What it would need.
+        detail: String,
+    },
+
+    /// The template named a tag this engine does not have.
+    ///
+    /// Distinct from [`Self::BadArguments`]: the tag's name is wrong, not its
+    /// arguments, and the evaluator reports it as an evaluation error the way
+    /// an unknown filter is reported.
+    #[error("`{{% {name} %}}` is not a tag this engine implements")]
+    Unknown {
+        /// The name as written.
+        name: String,
+    },
+
     /// The tag's arguments were malformed.
     #[error("invalid arguments for `{tag}`: {detail}")]
     BadArguments {
@@ -178,6 +202,8 @@ impl Diagnostic for TagError {
             Self::PathNotAllowed { .. } => MessageKey::new("heric-template.tag.path-not-allowed"),
             Self::ReadFailed { .. } => MessageKey::new("heric-template.tag.read-failed"),
             Self::SendFailed(_) => MessageKey::new("heric-template.tag.send-failed"),
+            Self::Unsupported { .. } => MessageKey::new("heric-template.tag.unsupported"),
+            Self::Unknown { .. } => MessageKey::new("heric-template.tag.unknown"),
             Self::BadArguments { .. } => MessageKey::new("heric-template.tag.bad-arguments"),
         }
     }
@@ -195,10 +221,15 @@ impl Diagnostic for TagError {
                 vec![("path".to_owned(), path.as_str().into())]
             }
             Self::SendFailed(detail) => vec![("detail".to_owned(), detail.as_str().into())],
+            Self::Unsupported { tag, detail } => vec![
+                ("tag".to_owned(), (*tag).into()),
+                ("detail".to_owned(), detail.as_str().into()),
+            ],
             Self::BadArguments { tag, detail } => vec![
                 ("tag".to_owned(), (*tag).into()),
                 ("detail".to_owned(), detail.as_str().into()),
             ],
+            Self::Unknown { name } => vec![("name".to_owned(), name.as_str().into())],
         }
     }
 }
