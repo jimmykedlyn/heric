@@ -13,11 +13,19 @@
 
 #![deny(unsafe_code)]
 
+mod ast;
 mod context;
 mod error;
+mod eval;
+pub mod filters;
 mod host;
+mod lexer;
+mod parser;
 mod purpose;
 mod tag;
+pub mod tags;
+pub mod testing;
+mod truthy;
 
 pub use context::{ConfidentialPolicy, RenderContext, Scope};
 pub use error::{RenderError, RenderErrorKind};
@@ -37,8 +45,13 @@ pub fn render(
     context: &RenderContext<'_>,
     host: &dyn TagHost,
 ) -> Result<String, RenderError> {
-    let _ = (input, context, host);
-    todo!("M1: parse and evaluate a Liquid template")
+    // The original short-circuits before parsing when there is nothing to
+    // parse; doing the same keeps the common case free of lexing work.
+    if !has_template_syntax(input) {
+        return Ok(input.to_owned());
+    }
+    let nodes = parser::parse(input)?;
+    eval::eval(&nodes, context, host)
 }
 
 /// Renders every templated field of a request in place.
@@ -67,7 +80,7 @@ pub fn render_request(
 /// keeps the common case cheap.
 #[must_use]
 pub fn has_template_syntax(input: &str) -> bool {
-    input.contains("{{") || input.contains("{%")
+    parser::has_tags(input)
 }
 
 /// Returns the version of `heric-template`.
