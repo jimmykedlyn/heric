@@ -122,6 +122,14 @@ impl FsBlobStore {
 /// `base.join("C:evil")` discards `base` entirely while containing no
 /// separator at all.
 fn is_single_segment(raw: &str) -> bool {
+    // `Path::components` only splits on the host's separator, so on Unix a
+    // backslash reads as an ordinary name character. Check both explicitly:
+    // an id written on Windows must not name a different path on Linux, and
+    // the reverse. On Unix this is what makes the test below fail rather than
+    // quietly create a file literally called `..\..\..\insomnia.Request.db`.
+    if raw.contains('/') || raw.contains('\\') {
+        return false;
+    }
     matches!(
         Path::new(raw).components().collect::<Vec<_>>().as_slice(),
         [std::path::Component::Normal(_)]
@@ -308,23 +316,32 @@ mod tests {
     #[test]
     fn a_path_traversing_id_is_refused() -> Result<(), Box<dyn std::error::Error>> {
         let probe = tempfile::tempdir()?;
-        // A file the unguarded `blob_path` would resolve to: three `..` climb
-        // back from `blobs/Response/body/` to the data root itself.
+        // A file the unguarded `blob_path` would resolve to on Windows: three
+        // `..` climb back from `blobs/Response/body/` to the data root itself.
+        // On Unix a backslash is an ordinary name character, so the same string
+        // names a file directly inside `blobs/Response/body/` instead.
         let outside = probe.path().join("insomnia.Request.db");
         std::fs::write(&outside, b"source")?;
         let store = FsBlobStore::open(probe.path())?;
         std::fs::create_dir_all(probe.path().join("blobs/Response/body"))?;
 
-        let traversing = BlobId {
-            owner: Id::new("..\\..\\..\\insomnia.Request.db"),
-            owner_kind: DocKind::Response,
-            role: BlobRole::Body,
-        };
-        assert_eq!(
-            std::fs::canonicalize(blob_path(probe.path(), &traversing))?,
-            std::fs::canonicalize(&outside)?,
-            "the unguarded path is exactly the file the guard must not reach"
-        );
+        // Only Windows reads `\` as a separator, so only there does the
+        // unguarded path actually land on `outside`. On Unix the prologue is
+        // still worth running — it proves the id is refused rather than
+        // creating a strangely named blob — but there is no traversal to show.
+        #[cfg(windows)]
+        {
+            let traversing = BlobId {
+                owner: Id::new("..\\..\\..\\insomnia.Request.db"),
+                owner_kind: DocKind::Response,
+                role: BlobRole::Body,
+            };
+            assert_eq!(
+                std::fs::canonicalize(blob_path(probe.path(), &traversing))?,
+                std::fs::canonicalize(&outside)?,
+                "the unguarded path is exactly the file the guard must not reach"
+            );
+        }
 
         for owner in [
             "..\\..\\..\\insomnia.Request.db",
