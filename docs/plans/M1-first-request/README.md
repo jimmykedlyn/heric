@@ -69,8 +69,11 @@ effect outside this worktree — ask before doing it.
 
 ## The tasks
 
-`Done` means the commit exists and the crate's suite is green. The test command
-is the one to run for steps 2 and 4; the commit message is the one step 5 wants.
+`Done` means the task's work exists on `feature/storage-paths` with its
+crate's suite green; `—` means not started. Nothing above row 11 is on
+`develop` yet, so on a fresh clone the code these tasks describe is absent even
+though the plan files are not. The test command is the one to run for steps 2
+and 4; the commit message is the one step 5 wants.
 
 | # | Task file to read | Test command | Commit message | Status |
 |---|---|---|---|---|
