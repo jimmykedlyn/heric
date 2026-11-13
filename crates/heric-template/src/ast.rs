@@ -127,6 +127,10 @@ pub(crate) enum Node {
         branches: Vec<(Expr, Vec<Self>)>,
         /// The `{% else %}` body, empty when absent.
         otherwise: Vec<Self>,
+        /// Line of the opening `{%`, 1-based.
+        line: u32,
+        /// Column of the opening `{%`, 1-based.
+        column: u32,
     },
     /// `{% for %}` with an optional `{% else %}`.
     For {
@@ -138,6 +142,10 @@ pub(crate) enum Node {
         body: Vec<Self>,
         /// The `{% else %}` body, run when the iterable is empty.
         otherwise: Vec<Self>,
+        /// Line of the opening `{%`, 1-based.
+        line: u32,
+        /// Column of the opening `{%`, 1-based.
+        column: u32,
     },
     /// `{% unless %}` with an optional `{% else %}`.
     Unless {
@@ -147,6 +155,10 @@ pub(crate) enum Node {
         body: Vec<Self>,
         /// The `{% else %}` body.
         otherwise: Vec<Self>,
+        /// Line of the opening `{%`, 1-based.
+        line: u32,
+        /// Column of the opening `{%`, 1-based.
+        column: u32,
     },
     /// `{% case %}` with `{% when %}` arms and an optional `{% else %}`.
     Case {
@@ -156,6 +168,10 @@ pub(crate) enum Node {
         whens: Vec<(Vec<Expr>, Vec<Self>)>,
         /// The `{% else %}` body.
         otherwise: Vec<Self>,
+        /// Line of the opening `{%`, 1-based.
+        line: u32,
+        /// Column of the opening `{%`, 1-based.
+        column: u32,
     },
     /// `{% assign name = expr %}`.
     Assign {
@@ -163,6 +179,10 @@ pub(crate) enum Node {
         target: String,
         /// The value bound to it.
         value: Expr,
+        /// Line of the opening `{%`, 1-based.
+        line: u32,
+        /// Column of the opening `{%`, 1-based.
+        column: u32,
     },
     /// `{% capture name %}…{% endcapture %}`.
     Capture {
@@ -170,6 +190,10 @@ pub(crate) enum Node {
         target: String,
         /// The body whose rendering is captured.
         body: Vec<Self>,
+        /// Line of the opening `{%`, 1-based.
+        line: u32,
+        /// Column of the opening `{%`, 1-based.
+        column: u32,
     },
     /// The verbatim body of a `{% raw %}` block. It is never re-lexed, so any
     /// delimiters it contains stay literal.

@@ -220,12 +220,16 @@ impl<'a> Parser<'a> {
                     return Ok(Node::If {
                         branches,
                         otherwise,
+                        line,
+                        column,
                     });
                 }
                 "endif" => {
                     return Ok(Node::If {
                         branches,
                         otherwise: Vec::new(),
+                        line,
+                        column,
                     });
                 }
                 _ => {
@@ -262,6 +266,8 @@ impl<'a> Parser<'a> {
                 condition,
                 body,
                 otherwise,
+                line,
+                column,
             });
         }
         self.position = self.position.saturating_add(1);
@@ -269,6 +275,8 @@ impl<'a> Parser<'a> {
             condition,
             body,
             otherwise: Vec::new(),
+            line,
+            column,
         })
     }
 
@@ -294,6 +302,8 @@ impl<'a> Parser<'a> {
                 iterable,
                 body,
                 otherwise,
+                line,
+                column,
             });
         }
         self.position = self.position.saturating_add(1);
@@ -302,6 +312,8 @@ impl<'a> Parser<'a> {
             iterable,
             body,
             otherwise: Vec::new(),
+            line,
+            column,
         })
     }
 
@@ -340,6 +352,8 @@ impl<'a> Parser<'a> {
                         scrutinee,
                         whens,
                         otherwise,
+                        line,
+                        column,
                     });
                 }
                 "endcase" => {
@@ -347,6 +361,8 @@ impl<'a> Parser<'a> {
                         scrutinee,
                         whens,
                         otherwise: Vec::new(),
+                        line,
+                        column,
                     });
                 }
                 _ => {
@@ -369,14 +385,24 @@ impl<'a> Parser<'a> {
         };
         let target = require_identifier(target.trim(), line, column, "`{% assign %}`")?;
         let value = parse_expression(value.trim(), line, column)?;
-        Ok(Node::Assign { target, value })
+        Ok(Node::Assign {
+            target,
+            value,
+            line,
+            column,
+        })
     }
 
     fn parse_capture(&mut self, rest: &str, line: u32, column: u32) -> Result<Node, RenderError> {
         let target = require_identifier(rest, line, column, "`{% capture %}`")?;
         let body = self.parse_body(&["endcapture"])?;
         self.expect_tag("endcapture", line, column, "`{% capture %}`")?;
-        Ok(Node::Capture { target, body })
+        Ok(Node::Capture {
+            target,
+            body,
+            line,
+            column,
+        })
     }
 
     /// Consumes the closer `expected` and errors if the next token is anything
@@ -1272,6 +1298,7 @@ mod tests {
             Node::If {
                 branches,
                 otherwise,
+                ..
             } => {
                 assert_eq!(branches.len(), 3);
                 assert!(otherwise.is_empty());
@@ -1287,6 +1314,7 @@ mod tests {
             Node::If {
                 branches,
                 otherwise,
+                ..
             } => {
                 assert_eq!(branches.len(), 1);
                 assert!(matches!(otherwise.as_slice(), [Node::Text(t)] if t == "2"));
@@ -1355,7 +1383,7 @@ mod tests {
     #[test]
     fn an_assign_binds_a_plain_name() -> TestResult {
         match one("{% assign path = 'x' %}")? {
-            Node::Assign { target, value } => {
+            Node::Assign { target, value, .. } => {
                 assert_eq!(target, "path");
                 assert!(matches!(value, Expr::Literal(Value::String(s)) if s == "x"));
                 Ok(())
@@ -1375,7 +1403,7 @@ mod tests {
     #[test]
     fn a_capture_keeps_its_body() -> TestResult {
         match one("{% capture out %}{{ a }}{% endcapture %}")? {
-            Node::Capture { target, body } => {
+            Node::Capture { target, body, .. } => {
                 assert_eq!(target, "out");
                 assert_eq!(body.len(), 1);
                 Ok(())

@@ -126,12 +126,24 @@ impl State<'_> {
                 let text = to_output(&value);
                 self.push(&text)
             }
-            Node::Assign { target, value } => {
+            Node::Assign {
+                target,
+                value,
+                line,
+                column,
+            } => {
+                self.position = (*line, *column);
                 let value = self.eval_expr(value)?;
                 self.bind(target, value);
                 Ok(())
             }
-            Node::Capture { target, body } => {
+            Node::Capture {
+                target,
+                body,
+                line,
+                column,
+            } => {
+                self.position = (*line, *column);
                 // Render the body into a scratch buffer, then restore the outer
                 // output, so a `capture` never swallows the text around it.
                 let saved = std::mem::take(&mut self.output);
@@ -144,7 +156,10 @@ impl State<'_> {
             Node::If {
                 branches,
                 otherwise,
+                line,
+                column,
             } => {
+                self.position = (*line, *column);
                 for (condition, body) in branches {
                     if is_truthy(&self.eval_expr(condition)?) {
                         return self.eval_nodes(body);
@@ -156,7 +171,10 @@ impl State<'_> {
                 condition,
                 body,
                 otherwise,
+                line,
+                column,
             } => {
+                self.position = (*line, *column);
                 if is_truthy(&self.eval_expr(condition)?) {
                     self.eval_nodes(otherwise)
                 } else {
@@ -168,16 +186,24 @@ impl State<'_> {
                 iterable,
                 body,
                 otherwise,
-            } => self.eval_for(variable, iterable, body, otherwise),
+                line,
+                column,
+            } => {
+                self.position = (*line, *column);
+                self.eval_for(variable, iterable, body, otherwise)
+            }
             Node::Case {
                 scrutinee,
                 whens,
                 otherwise,
+                line,
+                column,
             } => {
+                self.position = (*line, *column);
                 let value = self.eval_expr(scrutinee)?;
                 for (candidates, body) in whens {
                     for candidate in candidates {
-                        if self.eval_expr(candidate)? == value {
+                        if equals(&self.eval_expr(candidate)?, &value) {
                             return self.eval_nodes(body);
                         }
                     }
@@ -201,15 +227,7 @@ impl State<'_> {
         otherwise: &[Node],
     ) -> Result<(), RenderError> {
         let value = self.eval_expr(iterable)?;
-        // `for` walks an array's elements, an object's values and a range's
-        // numbers. A string is not iterable in the original.
-        let items: Vec<Value> = match value {
-            Value::Array(items) => items,
-            Value::Object(map) => map.into_values().collect(),
-            other => {
-                return Err(self.evaluation(format!("`{{% for %}}` cannot iterate over {other}")));
-            }
-        };
+        let items = iterable_items(value);
         if items.is_empty() {
             return self.eval_nodes(otherwise);
         }
@@ -243,15 +261,15 @@ impl State<'_> {
     }
 
     /// Looks a root name up, innermost scope first.
+    ///
+    /// A name the template binds wins over the merged context, which is why the
+    /// frames come first. `_` never reaches here: [`Self::resolve`] intercepts it
+    /// to mean the merged context itself.
     fn lookup(&self, name: &str) -> Option<&Value> {
         for frame in self.locals.iter().rev() {
             if let Some(value) = frame.get(name) {
                 return Some(value);
             }
-        }
-        if name == ALIAS {
-            // `_` is the whole merged context, not a key inside it.
-            return None;
         }
         self.scope.get(name)
     }
@@ -281,8 +299,14 @@ impl State<'_> {
                 match op {
                     UnaryOp::Not => Ok(Value::Bool(!is_truthy(&value))),
                     UnaryOp::Negate => {
-                        let number = self.numeric(&value, "negation operand")?;
-                        Ok(integer_value(-number))
+                        // `liquidjs` negates through JavaScript's `-`, so a
+                        // fraction negates and a non-number is an error rather
+                        // than a silent `NaN`.
+                        let number = javascript_number(&value);
+                        if number.is_nan() {
+                            return Err(self.evaluation(format!("`-` needs a number, got {value}")));
+                        }
+                        Ok(negated(number))
                     }
                 }
             }
@@ -298,10 +322,22 @@ impl State<'_> {
         // `_.name` has root `_`, so the alias collapses to "look in the merged
         // scope", exactly as the original's double spread does.
         let (mut current, remaining) = if root == ALIAS {
-            // `_` is the merged scope itself, so every segment of the path
-            // indexes into it: both `_.name` and the bracket form for a
-            // hyphenated key work, and a bare `_` renders the whole map.
-            (Value::Object(self.scope.clone()), path)
+            // A template can still bind `_` itself — `{% assign _ = 'x' %}` is
+            // legal — and a name it binds wins, so the locals come first and the
+            // merged scope is only the fallback. Otherwise `_` is the merged
+            // scope itself, so every segment of the path indexes into it: both
+            // `_.name` and the bracket form for a hyphenated key work, and a
+            // bare `_` renders the whole map.
+            let bound = self
+                .locals
+                .iter()
+                .rev()
+                .find_map(|frame| frame.get(ALIAS))
+                .cloned();
+            (
+                bound.unwrap_or_else(|| Value::Object(self.scope.clone())),
+                path,
+            )
         } else {
             let Some(value) = self.lookup(root) else {
                 return Err(self.undefined(root));
@@ -315,16 +351,7 @@ impl State<'_> {
             if is_forbidden(key_of(segment)) {
                 return Err(self.undefined(&path_name(root, path)));
             }
-            let next = match segment {
-                Segment::Key(key) => match &current {
-                    Value::Object(map) => map.get(key),
-                    _ => None,
-                },
-                Segment::Index(index) => match &current {
-                    Value::Array(items) => items.get(*index),
-                    _ => None,
-                },
-            };
+            let next = read_segment(&current, segment);
             let Some(value) = next else {
                 return Err(self.undefined(&path_name(root, path)));
             };
@@ -357,12 +384,12 @@ impl State<'_> {
                 let left = self.eval_expr(lhs)?;
                 let right = self.eval_expr(rhs)?;
                 match op {
-                    BinaryOp::Eq => Ok(Value::Bool(left == right)),
-                    BinaryOp::Ne => Ok(Value::Bool(left != right)),
-                    BinaryOp::Lt => self.compare(&left, &right).map(|o| Value::Bool(o.is_lt())),
-                    BinaryOp::Le => self.compare(&left, &right).map(|o| Value::Bool(o.is_le())),
-                    BinaryOp::Gt => self.compare(&left, &right).map(|o| Value::Bool(o.is_gt())),
-                    BinaryOp::Ge => self.compare(&left, &right).map(|o| Value::Bool(o.is_ge())),
+                    BinaryOp::Eq => Ok(Value::Bool(equals(&left, &right))),
+                    BinaryOp::Ne => Ok(Value::Bool(!equals(&left, &right))),
+                    BinaryOp::Lt => Ok(Value::Bool(self.compare(&left, &right).is_lt())),
+                    BinaryOp::Le => Ok(Value::Bool(self.compare(&left, &right).is_le())),
+                    BinaryOp::Gt => Ok(Value::Bool(self.compare(&left, &right).is_gt())),
+                    BinaryOp::Ge => Ok(Value::Bool(self.compare(&left, &right).is_ge())),
                     BinaryOp::Contains => Ok(Value::Bool(contains(&left, &right))),
                     BinaryOp::And | BinaryOp::Or => Ok(Value::Null),
                 }
@@ -370,13 +397,29 @@ impl State<'_> {
         }
     }
 
-    /// Orders two values, which Liquid only defines over numbers.
-    fn compare(&self, left: &Value, right: &Value) -> Result<std::cmp::Ordering, RenderError> {
-        match (left.as_f64(), right.as_f64()) {
-            (Some(left), Some(right)) => left
-                .partial_cmp(&right)
-                .ok_or_else(|| self.evaluation("cannot compare incomparable numbers".to_owned())),
-            _ => Err(self.evaluation(format!("cannot compare {left} with {right}"))),
+    /// Orders two values with JavaScript's relational rules.
+    ///
+    /// `liquidjs` has no `Comparable` registered for plain numbers and strings,
+    /// so `<`, `>`, `<=` and `>=` fall through to JavaScript's own operators.
+    /// Those coerce a mixed number/string pair numerically and compare two
+    /// strings lexicographically by UTF-16 code unit, which is byte order for
+    /// ASCII and differs only for text outside the BMP. A value that is neither
+    /// a number nor a string coerces to `NaN`, and every comparison against
+    /// `NaN` is false — hence [`std::cmp::Ordering::Equal`] is not reachable
+    /// from it either, and all four operators report false rather than an error.
+    fn compare(&self, left: &Value, right: &Value) -> std::cmp::Ordering {
+        match (left, right) {
+            (Value::String(left), Value::String(right)) => left.cmp(right),
+            _ => {
+                let left = javascript_number(left);
+                let right = javascript_number(right);
+                match left.partial_cmp(&right) {
+                    Some(ordering) => ordering,
+                    // `NaN` compares false against everything, so `<` and `>`
+                    // are both false. Returning `Equal` keeps both false.
+                    None => std::cmp::Ordering::Equal,
+                }
+            }
         }
     }
 
@@ -395,6 +438,129 @@ impl State<'_> {
                 "{what} is not an integer this engine can represent"
             ))
         })
+    }
+}
+
+/// What `{% for %}` walks, mirroring `liquidjs`'s `toEnumerable`.
+///
+/// An array is itself; a non-empty string is the one-element list holding it,
+/// which is why `{% for c in "ab" %}` renders `ab` once rather than twice; an
+/// object becomes a list of `[key, value]` pairs, so a loop body writes `e[0]`
+/// and `e[1]`; anything else yields nothing, making `{% for %}`'s `else` run.
+fn iterable_items(value: Value) -> Vec<Value> {
+    match value {
+        Value::Array(items) => items,
+        Value::String(text) if !text.is_empty() => vec![Value::String(text)],
+        Value::Object(map) => map
+            .into_iter()
+            .map(|(key, value)| Value::Array(vec![Value::String(key), value]))
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+/// Reads one path segment, mirroring `liquidjs`'s `readProperty`.
+///
+/// The original's `readProperty` tries the key against the object first and
+/// falls back to the built-in accessors, so `xs['0']` and `xs[0]` both reach an
+/// array's first element, `obj[0]` reaches an object's `"0"` key, and `.size`
+/// and `.first` work on both. All of that is reproduced here because a template
+/// written against the original uses those spellings.
+fn read_segment(current: &Value, segment: &Segment) -> Option<Value> {
+    let name = match segment {
+        Segment::Key(key) => key.clone(),
+        Segment::Index(index) => index.to_string(),
+    };
+
+    match current {
+        Value::Object(map) => map
+            .get(&name)
+            .cloned()
+            .or_else(|| builtin(map.len(), &name)),
+        Value::Array(items) => {
+            if let Ok(index) = name.parse::<usize>()
+                && let Some(item) = items.get(index)
+            {
+                return Some(item.clone());
+            }
+            builtin(items.len(), &name)
+        }
+        Value::String(text) => {
+            builtin(text.chars().count(), &name).or_else(|| match name.as_str() {
+                "first" => text.chars().next().map(|c| Value::String(c.to_string())),
+                "last" => text
+                    .chars()
+                    .next_back()
+                    .map(|c| Value::String(c.to_string())),
+                _ => None,
+            })
+        }
+        _ => None,
+    }
+}
+
+/// The accessors `liquidjs` exposes on every collection.
+///
+/// `size`, `length` and `first`/`last` are what a real template reaches for; the
+/// first two agree, so both are answered from the length the caller already has.
+fn builtin(length: usize, name: &str) -> Option<Value> {
+    match name {
+        "size" | "length" => Some(Value::from(length)),
+        // `first` and `last` need the collection itself, so their callers answer
+        // them; this exists for the length-only case.
+        _ => None,
+    }
+}
+
+/// Two values equal under `liquidjs`'s `==`.
+///
+/// Arrays compare element by element, recursively, and must both be arrays.
+/// Everything else compares strictly, so `1` and `"1"` are not equal and neither
+/// are `1` and `1.0` under `serde_json`'s representation — but they *are* equal
+/// in the original, where both are the number `1`. Comparing through `as_f64`
+/// for the number-vs-number case restores that.
+fn equals(left: &Value, right: &Value) -> bool {
+    match (left, right) {
+        (Value::Number(left), Value::Number(right)) => match (left.as_f64(), right.as_f64()) {
+            (Some(left), Some(right)) => left == right,
+            _ => left == right,
+        },
+        (Value::Array(left), Value::Array(right)) => {
+            left.len() == right.len()
+                && left
+                    .iter()
+                    .zip(right.iter())
+                    .all(|(left, right)| equals(left, right))
+        }
+        _ => left == right,
+    }
+}
+
+/// A negated number, as an integer when it is one.
+///
+/// A template that writes `{{ -3 }}` should print `-3`, not `-3`: the same rule
+/// that makes `to_output` print `1.0` as `1` applies here.
+fn negated(number: f64) -> Value {
+    if number.fract() == 0.0
+        && let Ok(integer) = format!("{number:.0}").parse::<i64>()
+    {
+        return Value::from(-integer);
+    }
+    Value::from(-number)
+}
+
+/// A value as JavaScript's `Number()` would convert it.
+///
+/// A string that parses as a number becomes one; anything else becomes `NaN`,
+/// which is what makes `{{ null < 1 }}` true (`null` is `0`) and
+/// `{{ "a" < 1 }}` false.
+fn javascript_number(value: &Value) -> f64 {
+    match value {
+        Value::Null => 0.0,
+        Value::Bool(flag) => f64::from(u8::from(*flag)),
+        Value::Number(number) => number.as_f64().unwrap_or(f64::NAN),
+        Value::String(text) => text.trim().parse::<f64>().unwrap_or(f64::NAN),
+        Value::Array(_) | Value::Object(_) => f64::NAN,
     }
 }
 
@@ -428,11 +594,6 @@ fn key_of(segment: &Segment) -> Option<&str> {
         Segment::Key(key) => Some(key),
         Segment::Index(_) => None,
     }
-}
-
-/// A numeric result as a JSON value.
-fn integer_value(value: i64) -> Value {
-    Value::from(value)
 }
 
 /// Liquid's `contains`: a substring for strings, a membership test for arrays.
@@ -693,6 +854,183 @@ mod tests {
     #[test]
     fn a_negative_number_is_negated() -> TestResult {
         assert_eq!(render_with("{{ -3 }}", &Scope::new())?, "-3");
+        // A fraction negates too: `liquidjs` uses JavaScript's `-`.
+        assert_eq!(render_with("{{ -0.5 }}", &Scope::new())?, "-0.5");
+        assert_eq!(render_with("{{ -0 }}", &Scope::new())?, "0");
+        Ok(())
+    }
+
+    #[test]
+    fn a_relational_operator_coerces_like_javascript() -> TestResult {
+        // `liquidjs` has no `Comparable` for a plain number or string, so it
+        // falls through to JavaScript's operators. Every case below was checked
+        // against `liquidjs` 10 with `jsTruthy: true`.
+        for template in [
+            "{{ 'a' < 'b' }}",
+            "{{ 1 < '2' }}",
+            "{{ '10' < '9' }}",
+            "{{ 2 < '10' }}",
+            "{{ '2' < 10 }}",
+        ] {
+            assert_eq!(render_with(template, &Scope::new())?, "true", "{template}");
+        }
+        // A null coerces to 0, so it is less than 1.
+        let scope = scope_of(&[("nothing", Value::Null)]);
+        assert_eq!(render_with("{{ nothing < 1 }}", &scope)?, "true");
+        // A boolean coerces to 1, so it is greater than 0.
+        let scope = scope_of(&[("flag", json!(true))]);
+        assert_eq!(render_with("{{ flag > 0 }}", &scope)?, "true");
+        Ok(())
+    }
+
+    #[test]
+    fn equality_is_strict_but_numeric() -> TestResult {
+        // Numbers compare by value, so JSON's `1` and `1.0` are equal.
+        assert_eq!(render_with("{{ 1 == 1.0 }}", &Scope::new())?, "true");
+        // A string and a number never are.
+        assert_eq!(render_with("{{ '1' == 1 }}", &Scope::new())?, "false");
+        assert_eq!(render_with("{{ true == 'true' }}", &Scope::new())?, "false");
+        // Arrays compare element by element.
+        assert_eq!(
+            render_with(
+                "{{ a == b }}",
+                &scope_of(&[("a", json!([1, 2])), ("b", json!([1, 2])),])
+            )?,
+            "true"
+        );
+        assert_eq!(
+            render_with(
+                "{{ a == b }}",
+                &scope_of(&[("a", json!([1])), ("b", json!([2])),])
+            )?,
+            "false"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn a_case_arm_compares_by_value() -> TestResult {
+        // `{% case %}` uses the same equality, so a string arm does not match a
+        // number and a float arm matches an integer of the same value.
+        let scope = scope_of(&[("v", json!("1"))]);
+        assert_eq!(
+            render_with(
+                "{% case v %}{% when 1 %}one{% else %}other{% endcase %}",
+                &scope
+            )?,
+            "other"
+        );
+        let scope = scope_of(&[("v", json!(1.0))]);
+        assert_eq!(
+            render_with(
+                "{% case v %}{% when 1 %}one{% else %}other{% endcase %}",
+                &scope
+            )?,
+            "one"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn a_for_over_a_string_renders_it_once() -> TestResult {
+        // `liquidjs`'s `toEnumerable` wraps a non-empty string in a one-element
+        // list, so the body runs once with the whole string.
+        let scope = scope_of(&[("s", json!("ab"))]);
+        assert_eq!(
+            render_with("{% for c in s %}<{{ c }}>{% endfor %}", &scope)?,
+            "<ab>"
+        );
+        // An empty string yields nothing, so `else` runs.
+        let scope = scope_of(&[("s", json!(""))]);
+        assert_eq!(
+            render_with("{% for c in s %}x{% else %}none{% endfor %}", &scope)?,
+            "none"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn a_for_over_an_object_yields_key_value_pairs() -> TestResult {
+        let scope = scope_of(&[("o", json!({"a": 1, "b": 2}))]);
+        assert_eq!(
+            render_with(
+                "{% for e in o %}[{{ e[0] }}={{ e[1] }}]{% endfor %}",
+                &scope
+            )?,
+            "[a=1][b=2]"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn a_for_over_a_non_collection_runs_its_else() -> TestResult {
+        // A number and a null iterate nothing rather than failing.
+        let scope = scope_of(&[("n", json!(5)), ("nothing", Value::Null)]);
+        assert_eq!(
+            render_with("{% for i in n %}x{% else %}none{% endfor %}", &scope)?,
+            "none"
+        );
+        assert_eq!(
+            render_with("{% for i in nothing %}x{% else %}none{% endfor %}", &scope)?,
+            "none"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn an_index_and_a_key_reach_arrays_and_objects() -> TestResult {
+        // `readProperty` tries the object first and falls back to the built-in
+        // accessors, so both spellings work on both shapes.
+        let scope = scope_of(&[
+            ("xs", json!(["a", "b"])),
+            ("obj", json!({"0": "zero", "k": "v"})),
+        ]);
+        assert_eq!(render_with("{{ xs[0] }}", &scope)?, "a");
+        assert_eq!(render_with("{{ xs['0'] }}", &scope)?, "a");
+        assert_eq!(render_with("{{ xs[1] }}", &scope)?, "b");
+        assert_eq!(render_with("{{ obj[0] }}", &scope)?, "zero");
+        assert_eq!(render_with("{{ obj.k }}", &scope)?, "v");
+        Ok(())
+    }
+
+    #[test]
+    fn a_collection_answers_size_and_length() -> TestResult {
+        let scope = scope_of(&[("xs", json!(["a", "b"])), ("o", json!({"a": 1}))]);
+        assert_eq!(render_with("{{ xs.size }}", &scope)?, "2");
+        assert_eq!(render_with("{{ xs.length }}", &scope)?, "2");
+        assert_eq!(render_with("{{ o.size }}", &scope)?, "1");
+        Ok(())
+    }
+
+    #[test]
+    fn an_assign_can_shadow_the_alias() -> TestResult {
+        // A name the template binds wins over `_`, which is otherwise the whole
+        // merged scope.
+        let scope = scope_of(&[("a", json!(1))]);
+        assert_eq!(render_with("{% assign _ = 'x' %}{{ _ }}", &scope)?, "x");
+        assert_eq!(render_with("{{ _.a }}", &scope)?, "1");
+        Ok(())
+    }
+
+    #[test]
+    fn an_error_inside_a_block_names_the_block_line() -> TestResult {
+        // A position of `0:0` would tell the user nothing.
+        for template in [
+            "{{ a }}\n{% assign x = nope %}",
+            "{{ a }}\n{% if nope %}x{% endif %}",
+            "{{ a }}\n{% for i in nope %}{% endfor %}",
+            "{{ a }}\n{% unless nope %}x{% endunless %}",
+            "{{ a }}\n{% case nope %}{% when 1 %}x{% endcase %}",
+        ] {
+            let scope = scope_of(&[("a", json!(1))]);
+            assert!(
+                matches!(
+                    render_with(template, &scope),
+                    Err(RenderError::UndefinedVariable { line: 2, .. })
+                ),
+                "expected an error on line 2 for `{template}`"
+            );
+        }
         Ok(())
     }
 
