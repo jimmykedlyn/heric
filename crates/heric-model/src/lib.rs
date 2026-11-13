@@ -21,6 +21,7 @@ mod kind;
 pub mod registry;
 pub mod request;
 pub mod response;
+pub mod settings;
 mod views;
 mod wire;
 mod workspace;
@@ -33,6 +34,7 @@ pub use id::Id;
 pub use init::{SCRATCHPAD_ORGANIZATION, SCRATCHPAD_PROJECT, SCRATCHPAD_WORKSPACE};
 pub use kind::DocKind;
 pub use response::DEFAULT_MAX_RESPONSES;
+pub use settings::SETTINGS_ID;
 pub use views::{
     Environment, Project, RequestGroup, Response, copy_name, inherited_authentication,
     inherited_headers, midpoint,

@@ -41,7 +41,7 @@ const META_SORT_KEY: &str = "metaSortKey";
 /// owns strings and collections. Only the shapes the original's `init()`
 /// functions actually use are represented.
 #[derive(Debug, Clone, Copy)]
-enum DefaultValue {
+pub(crate) enum DefaultValue {
     /// JSON `null`.
     Null,
     /// A boolean.
@@ -58,7 +58,7 @@ enum DefaultValue {
 
 impl DefaultValue {
     /// Returns the JSON value this entry stands for.
-    fn to_value(self) -> Value {
+    pub(crate) fn to_value(self) -> Value {
         match self {
             Self::Null => Value::Null,
             Self::Bool(value) => Value::Bool(value),
@@ -163,12 +163,21 @@ fn spec(kind: DocKind) -> Option<&'static ModelSpec> {
         DocKind::Environment => Some(&ENVIRONMENT),
         DocKind::Response => Some(&RESPONSE),
         DocKind::CookieJar => Some(&COOKIE_JAR),
-        // Settings has 66 init keys owned by Task 8. It stays unmodelled until
-        // that task lands, so pruning cannot delete what it writes; `apply`
-        // therefore leaves a Settings document exactly as it found it.
+        DocKind::Settings => Some(&SETTINGS),
         _ => None,
     }
 }
+
+/// `models/settings.ts`
+///
+/// The table lives in [`crate::settings`] because that module also owns the
+/// repair and migration passes over the same keys; one table, one owner.
+static SETTINGS: ModelSpec = ModelSpec {
+    defaults: &crate::settings::DEFAULTS,
+    optional: &[],
+    default_name: None,
+    sort_key: SortKey::None,
+};
 
 /// `models/workspace.ts`
 static WORKSPACE: ModelSpec = ModelSpec {
