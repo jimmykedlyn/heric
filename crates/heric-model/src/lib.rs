@@ -17,6 +17,7 @@ mod error;
 mod id;
 pub mod init;
 mod kind;
+pub mod registry;
 mod wire;
 
 pub use diagnostic::{Diagnostic, MessageKey, MessageValue};
