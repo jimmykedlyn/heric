@@ -23,4 +23,16 @@ pub enum ModelError {
         /// Name of the field.
         field: &'static str,
     },
+
+    /// Stored bytes did not decode.
+    ///
+    /// The other three variants describe a document's shape; this one describes
+    /// bytes that would not decompress, which is a different failure and needs
+    /// its own message so the UI can tell the user the file is damaged rather
+    /// than that Heric does not understand it.
+    #[error("stored bytes are corrupt: {detail}")]
+    CorruptBody {
+        /// What went wrong while decoding.
+        detail: String,
+    },
 }

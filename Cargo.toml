@@ -51,6 +51,9 @@ curl = "0.4.51"
 clap = { version = "4.6.7", features = ["derive"] }
 directories = "6.0.0"
 eframe = "0.37.0"
+# Response bodies and request-version payloads are stored gzipped, as the
+# original does. MIT OR Apache-2.0, on `deny.toml`'s allow-list.
+flate2 = "1.1.11"
 egui = "0.37.0"
 egui_tiles = "0.18.0"
 egui_extras = "0.37.0"

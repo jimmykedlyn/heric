@@ -8,10 +8,10 @@
 //! the original runs before pruning belong to the migration layer, not here.
 //!
 //! Two things differ from the original's merge by necessity. `name` is a meta
-//! key in Heric ([`DocMeta::name`]), so a model's default name lives in
-//! [`ModelSpec::default_name`] rather than in the body. `metaSortKey` depends
-//! on the creation time, so [`ModelSpec::sort_key`] records how to compute it
-//! instead of storing a value a constant cannot express.
+//! key in Heric ([`DocMeta::name`]), so a model's default name lives in the
+//! spec's `default_name` rather than in the body. `metaSortKey` depends on the
+//! creation time, so the spec's `sort_key` records how to compute it instead of
+//! storing a value a constant cannot express.
 
 use serde_json::{Map, Value};
 
@@ -353,8 +353,8 @@ static COOKIE_JAR: ModelSpec = ModelSpec {
 /// The id is generated from the kind's prefix, `modified` and `created` are
 /// `now` and there is no parent, matching the original's `initModel` global
 /// defaults. `isPrivate` is set only for the five kinds whose `init()` declares
-/// it, and absent for the rest — see [`sets_private`]. The body comes from the
-/// kind's [`ModelSpec`]; an unmodelled kind gets an empty body.
+/// it, and absent for the rest. The body comes from the kind's default table;
+/// an unmodelled kind gets an empty body.
 #[must_use]
 pub fn document(kind: DocKind, now: i64) -> Doc {
     let mut body = Map::new();
