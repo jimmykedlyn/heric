@@ -15,6 +15,7 @@ mod diagnostic;
 mod doc;
 mod error;
 mod id;
+pub mod init;
 mod kind;
 mod wire;
 
@@ -22,6 +23,7 @@ pub use diagnostic::{Diagnostic, MessageKey, MessageValue};
 pub use doc::{Change, Doc, DocMeta, Order, Patch, PatchOp, Query, Request, Workspace};
 pub use error::ModelError;
 pub use id::Id;
+pub use init::{SCRATCHPAD_ORGANIZATION, SCRATCHPAD_PROJECT, SCRATCHPAD_WORKSPACE};
 pub use kind::DocKind;
 pub use wire::{Body, Execution, Header, PreparedRequest, TimelineEntry, TimelineKind, Timings};
 
