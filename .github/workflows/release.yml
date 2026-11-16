@@ -122,7 +122,7 @@ jobs:
       - name: Generate changelog for this version
         run: git-cliff --latest --strip all > RELEASE_NOTES.md || echo "See CHANGELOG.md" > RELEASE_NOTES.md
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: artifacts
           merge-multiple: true
